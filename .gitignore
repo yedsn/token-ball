@@ -1,0 +1,12 @@
+node_modules
+src-ui/node_modules
+dist
+target
+src-tauri/target
+.vite
+.DS_Store
+.idea/
+*.log
+*.db
+*.sqlite
+*.sqlite3
