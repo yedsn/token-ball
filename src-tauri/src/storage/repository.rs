@@ -3,11 +3,11 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::{
-    error::AppResult,
+    error::{AppError, AppResult},
     quota::{
         build_summary, mask_secret, parse_account_status, parse_connection_status,
         parse_period_type, parse_quota_unit, ConnectionInput, ConnectionStatus, ProviderConnection,
-        ProviderType, QuotaAccount, QuotaSummary, QuotaWindow,
+        ProviderType, QuotaAccount, QuotaSummary, QuotaWindow, RequestActivity,
     },
 };
 
@@ -53,7 +53,7 @@ pub async fn list_connections(pool: &SqlitePool) -> AppResult<Vec<ProviderConnec
         SELECT id, provider_type, display_name, base_url, management_key, enabled, status,
                last_synced_at, created_at, updated_at
         FROM provider_connections
-        ORDER BY created_at ASC
+        ORDER BY updated_at DESC, created_at DESC
         "#,
     )
     .fetch_all(pool)
@@ -129,16 +129,24 @@ pub async fn update_connection_status(
 
 pub async fn replace_accounts(pool: &SqlitePool, accounts: &[QuotaAccount]) -> AppResult<()> {
     for account in accounts {
+        let recent_requests = serde_json::to_string(&account.recent_requests)
+            .map_err(|error| AppError::Message(error.to_string()))?;
         sqlx::query(
             r#"
             INSERT INTO provider_accounts
-                (id, connection_id, external_id, display_name, masked_identifier, plan_name, status, last_synced_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                (id, connection_id, external_id, display_name, masked_identifier, plan_name, status,
+                 success_count, failed_count, recent_requests, subscription_until, chatgpt_account_id, last_synced_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             ON CONFLICT(connection_id, external_id) DO UPDATE SET
                 display_name = excluded.display_name,
                 masked_identifier = excluded.masked_identifier,
                 plan_name = excluded.plan_name,
                 status = excluded.status,
+                success_count = excluded.success_count,
+                failed_count = excluded.failed_count,
+                recent_requests = excluded.recent_requests,
+                subscription_until = excluded.subscription_until,
+                chatgpt_account_id = excluded.chatgpt_account_id,
                 last_synced_at = excluded.last_synced_at
             "#,
         )
@@ -149,6 +157,11 @@ pub async fn replace_accounts(pool: &SqlitePool, accounts: &[QuotaAccount]) -> A
         .bind(&account.masked_identifier)
         .bind(&account.plan_name)
         .bind(account.status.to_string())
+        .bind(account.success_count)
+        .bind(account.failed_count)
+        .bind(recent_requests)
+        .bind(account.subscription_until.map(|dt| dt.to_rfc3339()))
+        .bind(&account.chatgpt_account_id)
         .bind(account.synced_at.to_rfc3339())
         .execute(pool)
         .await?;
@@ -209,7 +222,9 @@ pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
     let account_rows = sqlx::query(
         r#"
         SELECT a.id, a.connection_id, a.external_id, a.display_name, a.masked_identifier,
-               a.plan_name, s.status, s.critical_window_id, s.next_reset_at, s.collected_at
+               a.plan_name, a.success_count, a.failed_count, a.recent_requests, a.subscription_until,
+               a.chatgpt_account_id,
+               s.status, s.critical_window_id, s.next_reset_at, s.collected_at
         FROM provider_accounts a
         LEFT JOIN quota_snapshots s ON s.account_id = a.id
         ORDER BY a.display_name ASC
@@ -250,6 +265,11 @@ pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
             windows,
             critical_window_id: row.try_get("critical_window_id")?,
             next_reset_at: parse_dt(row.try_get("next_reset_at")?),
+            success_count: row.try_get("success_count")?,
+            failed_count: row.try_get("failed_count")?,
+            recent_requests: parse_recent_requests(row.try_get("recent_requests")?),
+            subscription_until: parse_dt(row.try_get("subscription_until")?),
+            chatgpt_account_id: row.try_get("chatgpt_account_id")?,
             synced_at,
         });
     }
@@ -352,4 +372,10 @@ fn parse_dt(value: Option<String>) -> Option<DateTime<Utc>> {
     value
         .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn parse_recent_requests(value: Option<String>) -> Vec<RequestActivity> {
+    value
+        .and_then(|value| serde_json::from_str(&value).ok())
+        .unwrap_or_default()
 }

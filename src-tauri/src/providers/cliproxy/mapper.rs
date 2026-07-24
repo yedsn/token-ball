@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::quota::{
     mask_secret, select_critical_window, AccountStatus, PeriodType, QuotaAccount, QuotaUnit,
-    QuotaWindow,
+    QuotaWindow, RequestActivity,
 };
 
 pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount> {
@@ -14,13 +14,36 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
         .into_iter()
         .enumerate()
         .map(|(index, item)| {
-            let external_id =
-                string_field(item, &["id", "authFileId", "auth_file_id", "path", "email"])
-                    .unwrap_or_else(|| format!("account-{}", index + 1));
-            let display_name =
-                string_field(item, &["displayName", "display_name", "name", "email"])
-                    .unwrap_or_else(|| format!("Codex 账号 {}", index + 1));
-            let status = map_status(string_field(item, &["status", "state"]).as_deref());
+            let external_id = string_field(
+                item,
+                &[
+                    "auth_index",
+                    "authIndex",
+                    "id",
+                    "authFileId",
+                    "auth_file_id",
+                    "path",
+                    "email",
+                ],
+            )
+            .unwrap_or_else(|| format!("account-{}", index + 1));
+            let display_name = string_field(
+                item,
+                &[
+                    "label",
+                    "displayName",
+                    "display_name",
+                    "name",
+                    "email",
+                    "account",
+                ],
+            )
+            .unwrap_or_else(|| format!("Codex 账号 {}", index + 1));
+            let status = map_status(
+                string_field(item, &["status", "state"]).as_deref(),
+                bool_field(item, &["disabled"]),
+                bool_field(item, &["unavailable"]),
+            );
             let mut windows = map_windows(item, &external_id);
             let critical_id = select_critical_window(&windows).map(|window| window.id.clone());
             for window in &mut windows {
@@ -33,7 +56,7 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
                 connection_id: connection_id.to_string(),
                 external_id,
                 display_name,
-                masked_identifier: string_field(item, &["email", "identifier"])
+                masked_identifier: string_field(item, &["email", "account", "identifier"])
                     .map(|value| mask_secret(&value)),
                 plan_name: string_field(item, &["plan", "planName", "plan_name"])
                     .unwrap_or_else(|| "Codex Plus".to_string()),
@@ -41,6 +64,33 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
                 windows,
                 critical_window_id: critical_id,
                 next_reset_at,
+                success_count: integer_field(item, &["success", "success_count", "successCount"]),
+                failed_count: integer_field(item, &["failed", "failed_count", "failedCount"]),
+                recent_requests: map_recent_requests(item),
+                subscription_until: item
+                    .get("id_token")
+                    .and_then(|token| {
+                        date_field(
+                            token,
+                            &[
+                                "chatgpt_subscription_active_until",
+                                "subscription_until",
+                                "expires_at",
+                            ],
+                        )
+                    })
+                    .or_else(|| date_field(item, &["subscription_until", "expires_at"])),
+                chatgpt_account_id: item.get("id_token").and_then(|token| {
+                    string_field(
+                        token,
+                        &[
+                            "chatgpt_account_id",
+                            "account_id",
+                            "accountId",
+                            "https://api.openai.com/auth.chatgpt_account_id",
+                        ],
+                    )
+                }),
                 synced_at: now,
             }
         })
@@ -51,7 +101,14 @@ fn extract_array(payload: &Value) -> Vec<&Value> {
     if let Some(array) = payload.as_array() {
         return array.iter().collect();
     }
-    for key in ["data", "authFiles", "auth_files", "accounts", "items"] {
+    for key in [
+        "data",
+        "files",
+        "authFiles",
+        "auth_files",
+        "accounts",
+        "items",
+    ] {
         if let Some(array) = payload.get(key).and_then(Value::as_array) {
             return array.iter().collect();
         }
@@ -134,7 +191,47 @@ fn map_window(value: &Value, external_id: &str, index: usize) -> QuotaWindow {
     }
 }
 
-fn map_status(value: Option<&str>) -> AccountStatus {
+fn map_recent_requests(item: &Value) -> Vec<RequestActivity> {
+    item.get("recent_requests")
+        .or_else(|| item.get("recentRequests"))
+        .and_then(Value::as_array)
+        .map(|requests| {
+            requests
+                .iter()
+                .filter_map(|request| {
+                    Some(RequestActivity {
+                        time: string_field(request, &["time", "window"])?,
+                        success: integer_field(
+                            request,
+                            &["success", "success_count", "successCount"],
+                        )
+                        .unwrap_or(0),
+                        failed: integer_field(request, &["failed", "failed_count", "failedCount"])
+                            .unwrap_or(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn integer_field(value: &Value, keys: &[&str]) -> Option<i64> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_i64))
+}
+
+fn map_status(
+    value: Option<&str>,
+    disabled: Option<bool>,
+    unavailable: Option<bool>,
+) -> AccountStatus {
+    if disabled.unwrap_or(false) {
+        return AccountStatus::Disabled;
+    }
+    if unavailable.unwrap_or(false) {
+        return AccountStatus::Cooldown;
+    }
+
     match value.unwrap_or_default().to_ascii_lowercase().as_str() {
         "available" | "ok" | "active" => AccountStatus::Available,
         "warning" => AccountStatus::Warning,

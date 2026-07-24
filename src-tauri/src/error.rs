@@ -12,7 +12,7 @@ pub enum AppError {
     DataDirUnavailable,
     #[error("连接不存在")]
     ConnectionNotFound,
-    #[error("CLIProxyAPI 认证失败，请检查 Management Key")]
+    #[error("CLIProxyAPI 认证失败，请检查管理 Key")]
     Authentication,
     #[error("CLIProxyAPI 返回内容无法识别")]
     InvalidResponse,

@@ -58,7 +58,18 @@ export interface QuotaAccount {
   windows: QuotaWindow[];
   criticalWindowId?: string | null;
   nextResetAt?: string | null;
+  successCount?: number | null;
+  failedCount?: number | null;
+  recentRequests: RequestActivity[];
+  subscriptionUntil?: string | null;
+  chatgptAccountId?: string | null;
   syncedAt: string;
+}
+
+export interface RequestActivity {
+  time: string;
+  success: number;
+  failed: number;
 }
 
 export interface QuotaSummary {

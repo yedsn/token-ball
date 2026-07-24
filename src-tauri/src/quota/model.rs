@@ -91,7 +91,20 @@ pub struct QuotaAccount {
     pub windows: Vec<QuotaWindow>,
     pub critical_window_id: Option<String>,
     pub next_reset_at: Option<DateTime<Utc>>,
+    pub success_count: Option<i64>,
+    pub failed_count: Option<i64>,
+    pub recent_requests: Vec<RequestActivity>,
+    pub subscription_until: Option<DateTime<Utc>>,
+    pub chatgpt_account_id: Option<String>,
     pub synced_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestActivity {
+    pub time: String,
+    pub success: i64,
+    pub failed: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

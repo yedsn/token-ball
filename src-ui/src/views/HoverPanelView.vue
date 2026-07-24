@@ -1,12 +1,29 @@
 <script setup lang="ts">
 import { RefreshCw } from "lucide-vue-next";
 import { useTokenBallStore } from "../store";
+import type { QuotaAccount } from "../types";
 
 const store = useTokenBallStore();
 
-function percent(account: any) {
-  const window = account.windows.find((item: any) => item.id === account.criticalWindowId);
+function percent(account: QuotaAccount) {
+  const window = account.windows.find((item) => item.id === account.criticalWindowId);
   return typeof window?.remainingPercent === "number" ? `${Math.round(window.remainingPercent)}%` : "未知";
+}
+
+function quotaDetail(account: QuotaAccount) {
+  if (!account.windows.length) return activity(account);
+  return account.windows
+    .slice(0, 2)
+    .map((window) => `${window.name} ${typeof window.remainingPercent === "number" ? Math.round(window.remainingPercent) + "%" : "未知"}`)
+    .join(" · ");
+}
+
+function activity(account: QuotaAccount) {
+  const latest = account.recentRequests?.[account.recentRequests.length - 1];
+  if (latest) return `${latest.success}/${latest.failed} · ${latest.time}`;
+  const success = account.successCount ?? 0;
+  const failed = account.failedCount ?? 0;
+  return success || failed ? `${success}/${failed} 累计` : account.planName;
 }
 
 function reset(value?: string | null) {
@@ -26,11 +43,12 @@ function reset(value?: string | null) {
     </header>
 
     <section v-if="!store.hasConnection" class="empty-panel">尚未配置 CLIProxyAPI</section>
+    <section v-else-if="store.summary.accounts.length === 0" class="empty-panel">已连接，暂无账号数据</section>
     <section v-else class="account-list">
       <article v-for="account in store.summary.accounts" :key="account.id" class="account-row">
         <div>
           <strong>{{ account.displayName }}</strong>
-          <span>{{ account.maskedIdentifier || account.planName }}</span>
+          <span>{{ quotaDetail(account) }}</span>
         </div>
         <div class="quota-cell">
           <b>{{ percent(account) }}</b>

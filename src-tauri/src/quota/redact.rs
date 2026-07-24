@@ -23,7 +23,15 @@ pub fn mask_secret(value: &str) -> String {
 
 pub fn redact_sensitive(message: &str) -> String {
     let mut output = message.to_string();
-    for marker in ["Authorization", "management_key", "managementKey", "Bearer"] {
+    for marker in [
+        "Authorization",
+        "X-API-Key",
+        "X-Management-Key",
+        "management_key",
+        "managementKey",
+        "apiKey",
+        "Bearer",
+    ] {
         if output.contains(marker) {
             output = output.replace(marker, "[redacted]");
         }

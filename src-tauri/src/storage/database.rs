@@ -55,6 +55,11 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
             masked_identifier TEXT,
             plan_name TEXT NOT NULL,
             status TEXT NOT NULL,
+            success_count INTEGER,
+            failed_count INTEGER,
+            recent_requests TEXT NOT NULL DEFAULT '[]',
+            subscription_until TEXT,
+            chatgpt_account_id TEXT,
             last_synced_at TEXT,
             UNIQUE(connection_id, external_id),
             FOREIGN KEY(connection_id) REFERENCES provider_connections(id) ON DELETE CASCADE
@@ -62,6 +67,16 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
         "#,
     )
     .await?;
+
+    for statement in [
+        "ALTER TABLE provider_accounts ADD COLUMN success_count INTEGER",
+        "ALTER TABLE provider_accounts ADD COLUMN failed_count INTEGER",
+        "ALTER TABLE provider_accounts ADD COLUMN recent_requests TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE provider_accounts ADD COLUMN subscription_until TEXT",
+        "ALTER TABLE provider_accounts ADD COLUMN chatgpt_account_id TEXT",
+    ] {
+        let _ = pool.execute(statement).await;
+    }
 
     pool.execute(
         r#"

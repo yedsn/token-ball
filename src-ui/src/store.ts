@@ -9,7 +9,8 @@ import {
   onRefreshStarted,
   refreshAllQuota,
   saveConnection,
-  testConnection
+  testConnection,
+  deleteConnection
 } from "./services/tauri";
 
 const emptySummary: QuotaSummary = {
@@ -36,7 +37,7 @@ export const useTokenBallStore = defineStore("token-ball", {
     hasConnection: (state) => state.connections.length > 0,
     percentLabel: (state) => {
       const percent = state.summary.lowestRemainingPercent;
-      return typeof percent === "number" ? `${Math.round(percent)}%` : "--";
+      return typeof percent === "number" ? `${Math.round(percent)}%` : "未知";
     }
   },
   actions: {
@@ -63,6 +64,10 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async testCliProxyConnection(id: string) {
       await testConnection(id);
+    },
+    async deleteCliProxyConnection(id: string) {
+      await deleteConnection(id);
+      this.connections = await listConnections();
     },
     async refresh() {
       this.refreshing = true;

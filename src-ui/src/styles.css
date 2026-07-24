@@ -188,6 +188,18 @@ button {
   gap: 4px;
 }
 
+.quota-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quota-windows span {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+}
+
 .quota-cell {
   display: grid;
   justify-items: end;
@@ -350,6 +362,11 @@ button:disabled {
 .empty-panel {
   color: #aac0b8;
   font-size: 13px;
+}
+
+.notice {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .account-panel {

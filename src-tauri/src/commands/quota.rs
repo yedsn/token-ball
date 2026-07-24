@@ -7,7 +7,7 @@ use crate::{
     app_state::AppState,
     error::AppResult,
     events,
-    providers::cliproxy::{mapper::map_auth_files, CliProxyClient},
+    providers::cliproxy::{mapper::map_auth_files, wham::enrich_codex_quotas, CliProxyClient},
     quota::{build_summary, ConnectionStatus, QuotaSummary},
     storage::repository,
 };
@@ -83,7 +83,8 @@ async fn sync_connection(state: &Arc<AppState>, connection_id: &str) -> AppResul
     let (connection, key) = repository::get_connection_secret(&state.db, connection_id).await?;
     let client = CliProxyClient::new(&connection.base_url, &key)?;
     let payload = client.auth_files().await?;
-    let accounts = map_auth_files(&connection.id, &payload);
+    let mut accounts = map_auth_files(&connection.id, &payload);
+    enrich_codex_quotas(&client, &mut accounts).await?;
     repository::replace_accounts(&state.db, &accounts).await?;
     let _summary = build_summary(accounts, ConnectionStatus::Healthy, false);
     Ok(())
