@@ -21,3 +21,7 @@ pub fn emit_provider_error(app: &AppHandle, message: &str) {
 pub fn emit_display_settings_updated(app: &AppHandle, settings: &DisplaySettings) {
     let _ = app.emit("settings://display-updated", settings);
 }
+
+pub fn emit_show_overview(app: &AppHandle) {
+    let _ = app.emit("main://show-overview", ());
+}

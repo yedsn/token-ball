@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Blocks, CheckCircle2, Gauge, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
 import { useTokenBallStore } from "../store";
 import { getOrbVisible, hideWindow, showWindow } from "../services/tauri";
+import { onShowOverview } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
@@ -106,6 +107,10 @@ watch(
   { immediate: true }
 );
 
+onMounted(async () => {
+  await onShowOverview(() => openPage("overview"));
+});
+
 function openPage(target: MainPage) {
   page.value = target;
   if (target === "orbSettings" && !settingsSection.value) settingsSection.value = "appearance";
@@ -207,6 +212,7 @@ async function save() {
     form.volcengineCodingSeatId = connection.providerConfigHint?.codingSeatId || form.volcengineCodingSeatId;
     form.volcengineCodingWebBaseUrl = connection.providerConfigHint?.codingWebBaseUrl || form.volcengineCodingWebBaseUrl;
     notice.value = "连接已保存";
+    await store.refresh();
     return connection;
   } catch (error) {
     notice.value = String(error);

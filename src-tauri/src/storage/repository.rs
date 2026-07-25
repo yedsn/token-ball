@@ -283,6 +283,38 @@ pub async fn replace_accounts(pool: &SqlitePool, accounts: &[QuotaAccount]) -> A
     Ok(())
 }
 
+pub async fn replace_connection_accounts(
+    pool: &SqlitePool,
+    connection_id: &str,
+    accounts: &[QuotaAccount],
+) -> AppResult<()> {
+    let old_account_ids = sqlx::query("SELECT id FROM provider_accounts WHERE connection_id = ?1")
+        .bind(connection_id)
+        .fetch_all(pool)
+        .await?;
+    for row in old_account_ids {
+        let account_id: String = row.try_get("id")?;
+        sqlx::query(
+            r#"
+            DELETE FROM quota_windows
+            WHERE snapshot_id IN (SELECT id FROM quota_snapshots WHERE account_id = ?1)
+            "#,
+        )
+        .bind(&account_id)
+        .execute(pool)
+        .await?;
+        sqlx::query("DELETE FROM quota_snapshots WHERE account_id = ?1")
+            .bind(&account_id)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query("DELETE FROM provider_accounts WHERE connection_id = ?1")
+        .bind(connection_id)
+        .execute(pool)
+        .await?;
+    replace_accounts(pool, accounts).await
+}
+
 pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
     let account_rows = sqlx::query(
         r#"
@@ -607,7 +639,7 @@ async fn load_windows(pool: &SqlitePool, snapshot_id: &str) -> AppResult<Vec<Quo
                unit, reset_at, is_active, is_current_constraint, data_source
         FROM quota_windows
         WHERE snapshot_id = ?1
-        ORDER BY remaining_percent ASC
+        ORDER BY rowid ASC
         "#,
     )
     .bind(snapshot_id)

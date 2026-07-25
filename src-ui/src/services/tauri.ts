@@ -85,3 +85,7 @@ export function onProviderError(callback: (message: string) => void) {
 export function onDisplaySettingsUpdated(callback: (settings: DisplaySettings) => void) {
   return listen<DisplaySettings>("settings://display-updated", (event) => callback(event.payload));
 }
+
+export function onShowOverview(callback: () => void) {
+  return listen("main://show-overview", () => callback());
+}

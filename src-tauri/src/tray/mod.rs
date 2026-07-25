@@ -40,7 +40,7 @@ pub fn setup_tray(
                 windows::hide_window(app, "hover");
                 set_orb_visible(app, false);
             }
-            "open_main" => windows::show_window(app, "main"),
+            "open_main" => windows::open_main_overview(app),
             "refresh" => {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -57,8 +57,7 @@ pub fn setup_tray(
                 button_state: MouseButtonState::Up,
                 ..
             } => {
-                windows::hide_window(tray.app_handle(), "hover");
-                windows::show_window(tray.app_handle(), "main");
+                windows::open_main_overview(tray.app_handle());
             }
             TrayIconEvent::Enter { .. } => {
                 let app = tray.app_handle().clone();

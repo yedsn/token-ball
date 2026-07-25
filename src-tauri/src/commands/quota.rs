@@ -98,7 +98,7 @@ async fn sync_connection(state: &Arc<AppState>, connection_id: &str) -> AppResul
             client.account_snapshot(&connection.id).await?
         }
     };
-    repository::replace_accounts(&state.db, &accounts).await?;
+    repository::replace_connection_accounts(&state.db, connection_id, &accounts).await?;
     let _summary = build_summary(accounts, ConnectionStatus::Healthy, false);
     Ok(())
 }
