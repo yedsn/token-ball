@@ -6,8 +6,9 @@ use crate::{
     error::{AppError, AppResult},
     quota::{
         build_summary, mask_secret, parse_account_status, parse_connection_status,
-        parse_period_type, parse_quota_unit, ConnectionInput, ConnectionStatus, ProviderConnection,
-        ProviderType, QuotaAccount, QuotaSummary, QuotaWindow, RequestActivity,
+        parse_period_type, parse_provider_type, parse_quota_unit, ConnectionInput,
+        ConnectionStatus, DisplaySettings, ProviderConnection, QuotaAccount, QuotaSummary,
+        QuotaWindow, RequestActivity,
     },
 };
 
@@ -16,8 +17,11 @@ pub async fn save_connection(
     input: ConnectionInput,
 ) -> AppResult<ProviderConnection> {
     let now = Utc::now();
+    let provider_type = input.provider_type.clone();
     let id = input.id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let enabled = input.enabled.unwrap_or(true);
+    let management_key =
+        resolve_management_key(pool, &id, &provider_type, &input.management_key).await?;
 
     sqlx::query(
         r#"
@@ -33,10 +37,10 @@ pub async fn save_connection(
         "#,
     )
     .bind(&id)
-    .bind(ProviderType::CliProxyApi.to_string())
+    .bind(provider_type.to_string())
     .bind(input.display_name)
     .bind(input.base_url)
-    .bind(input.management_key)
+    .bind(management_key)
     .bind(enabled as i64)
     .bind(ConnectionStatus::Unknown.to_string())
     .bind(now.to_rfc3339())
@@ -45,6 +49,47 @@ pub async fn save_connection(
     .await?;
 
     get_connection(pool, &id).await
+}
+
+async fn resolve_management_key(
+    pool: &SqlitePool,
+    id: &str,
+    provider_type: &crate::quota::ProviderType,
+    input_secret: &str,
+) -> AppResult<String> {
+    let existing = sqlx::query("SELECT management_key FROM provider_connections WHERE id = ?1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .map(|row| row.try_get::<String, _>("management_key"))
+        .transpose()?
+        .unwrap_or_default();
+    if input_secret.trim().is_empty() {
+        return Ok(existing);
+    }
+    if !matches!(provider_type, crate::quota::ProviderType::Volcengine) {
+        return Ok(input_secret.to_string());
+    }
+    merge_volcengine_secret(&existing, input_secret)
+}
+
+fn merge_volcengine_secret(existing: &str, input_secret: &str) -> AppResult<String> {
+    let mut input: serde_json::Value =
+        serde_json::from_str(input_secret).map_err(|error| AppError::Message(error.to_string()))?;
+    let existing: serde_json::Value = serde_json::from_str(existing).unwrap_or_default();
+    for key in ["accessKeyId", "secretAccessKey"] {
+        let is_empty = input
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true);
+        if is_empty {
+            if let Some(value) = existing.get(key).and_then(|value| value.as_str()) {
+                input[key] = serde_json::Value::String(value.to_string());
+            }
+        }
+    }
+    serde_json::to_string(&input).map_err(|error| AppError::Message(error.to_string()))
 }
 
 pub async fn list_connections(pool: &SqlitePool) -> AppResult<Vec<ProviderConnection>> {
@@ -289,6 +334,7 @@ pub async fn load_summary(pool: &SqlitePool, stale: bool) -> AppResult<QuotaSumm
 pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
     for (key, value) in [
         ("orb.size", "84"),
+        ("orb.visible", "true"),
         ("orb.carouselIntervalMs", "4000"),
         ("sync.intervalSeconds", "180"),
     ] {
@@ -306,6 +352,223 @@ pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
         .await?;
     }
     Ok(())
+}
+
+pub async fn get_bool_setting(pool: &SqlitePool, key: &str, default: bool) -> AppResult<bool> {
+    Ok(get_setting(pool, key)
+        .await?
+        .and_then(|value| value.parse::<bool>().ok())
+        .unwrap_or(default))
+}
+
+pub async fn set_bool_setting(pool: &SqlitePool, key: &str, value: bool) -> AppResult<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO settings (key, value, updated_at)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(key)
+    .bind(value.to_string())
+    .bind(Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn load_display_settings(pool: &SqlitePool) -> AppResult<DisplaySettings> {
+    let value = get_setting(pool, "display.quota").await?;
+    Ok(value
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default())
+}
+
+pub async fn save_display_settings(
+    pool: &SqlitePool,
+    settings: &DisplaySettings,
+) -> AppResult<DisplaySettings> {
+    let value =
+        serde_json::to_string(settings).map_err(|error| AppError::Message(error.to_string()))?;
+    sqlx::query(
+        r#"
+        INSERT INTO settings (key, value, updated_at)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind("display.quota")
+    .bind(value)
+    .bind(Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(settings.clone())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginManifest {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub category: String,
+    pub capability: String,
+    pub permissions: Vec<String>,
+    pub installed: bool,
+    pub enabled: bool,
+    pub configurable: bool,
+    pub built_in: bool,
+    pub settings_key: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInput {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub category: String,
+    pub capability: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub configurable: bool,
+}
+
+pub async fn ensure_default_plugins(pool: &SqlitePool) -> AppResult<()> {
+    for plugin in built_in_plugins() {
+        let value =
+            serde_json::to_string(&plugin).map_err(|error| AppError::Message(error.to_string()))?;
+        sqlx::query(
+            r#"
+            INSERT INTO plugins (id, value, updated_at)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(id) DO NOTHING
+            "#,
+        )
+        .bind(&plugin.id)
+        .bind(value)
+        .bind(Utc::now().to_rfc3339())
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn list_plugins(pool: &SqlitePool) -> AppResult<Vec<PluginManifest>> {
+    let rows = sqlx::query("SELECT value FROM plugins ORDER BY id ASC")
+        .fetch_all(pool)
+        .await?;
+    let mut plugins = Vec::new();
+    for row in rows {
+        let value: String = row.try_get("value")?;
+        if let Ok(plugin) = serde_json::from_str::<PluginManifest>(&value) {
+            plugins.push(plugin);
+        }
+    }
+    Ok(plugins)
+}
+
+pub async fn set_plugin_enabled(
+    pool: &SqlitePool,
+    id: &str,
+    enabled: bool,
+) -> AppResult<Vec<PluginManifest>> {
+    let row = sqlx::query("SELECT value FROM plugins WHERE id = ?1")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+    let value: String = row.try_get("value")?;
+    let mut plugin: PluginManifest =
+        serde_json::from_str(&value).map_err(|error| AppError::Message(error.to_string()))?;
+    plugin.enabled = enabled;
+    let value =
+        serde_json::to_string(&plugin).map_err(|error| AppError::Message(error.to_string()))?;
+    sqlx::query("UPDATE plugins SET value = ?2, updated_at = ?3 WHERE id = ?1")
+        .bind(id)
+        .bind(value)
+        .bind(Utc::now().to_rfc3339())
+        .execute(pool)
+        .await?;
+    list_plugins(pool).await
+}
+
+pub async fn add_plugin(pool: &SqlitePool, input: PluginInput) -> AppResult<Vec<PluginManifest>> {
+    let id = input.id.trim();
+    if id.is_empty() {
+        return Err(AppError::Message("插件 ID 不能为空".to_string()));
+    }
+    let plugin = PluginManifest {
+        id: id.to_string(),
+        name: input.name.trim().to_string(),
+        version: input.version.trim().to_string(),
+        category: input.category.trim().to_string(),
+        capability: input.capability.trim().to_string(),
+        permissions: input.permissions,
+        installed: true,
+        enabled: true,
+        configurable: input.configurable,
+        built_in: false,
+        settings_key: Some(format!("plugin.{id}")),
+    };
+    let value =
+        serde_json::to_string(&plugin).map_err(|error| AppError::Message(error.to_string()))?;
+    sqlx::query(
+        r#"
+        INSERT INTO plugins (id, value, updated_at)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(id) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(&plugin.id)
+    .bind(value)
+    .bind(Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    list_plugins(pool).await
+}
+
+pub async fn delete_plugin(pool: &SqlitePool, id: &str) -> AppResult<Vec<PluginManifest>> {
+    let row = sqlx::query("SELECT value FROM plugins WHERE id = ?1")
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+    let value: String = row.try_get("value")?;
+    let plugin: PluginManifest =
+        serde_json::from_str(&value).map_err(|error| AppError::Message(error.to_string()))?;
+    if plugin.built_in {
+        return Err(AppError::Message("内置插件不能删除，只能停用".to_string()));
+    }
+    sqlx::query("DELETE FROM plugins WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    list_plugins(pool).await
+}
+
+fn built_in_plugins() -> Vec<PluginManifest> {
+    vec![PluginManifest {
+        id: "volcengine-provider".to_string(),
+        name: "火山引擎 Provider".to_string(),
+        version: "0.1.0".to_string(),
+        category: "provider".to_string(),
+        capability: "提供火山方舟 OpenAI-compatible 接入、连通性测试和基础账号显示。".to_string(),
+        permissions: vec![
+            "network:ark.volces.com".to_string(),
+            "secret:api-key".to_string(),
+        ],
+        installed: true,
+        enabled: true,
+        configurable: true,
+        built_in: true,
+        settings_key: Some("provider.volcengine".to_string()),
+    }]
 }
 
 #[allow(dead_code)]
@@ -354,9 +617,12 @@ async fn load_windows(pool: &SqlitePool, snapshot_id: &str) -> AppResult<Vec<Quo
 
 fn row_to_connection(row: sqlx::sqlite::SqliteRow) -> AppResult<ProviderConnection> {
     let management_key: String = row.try_get("management_key")?;
+    let provider_type: String = row.try_get("provider_type")?;
+    let provider_type = parse_provider_type(&provider_type);
+    let provider_config_hint = provider_config_hint(&provider_type, &management_key);
     Ok(ProviderConnection {
         id: row.try_get("id")?,
-        provider_type: ProviderType::CliProxyApi,
+        provider_type,
         display_name: row.try_get("display_name")?,
         base_url: row.try_get("base_url")?,
         enabled: row.try_get::<i64, _>("enabled")? == 1,
@@ -365,6 +631,35 @@ fn row_to_connection(row: sqlx::sqlite::SqliteRow) -> AppResult<ProviderConnecti
         created_at: parse_dt(row.try_get("created_at")?).unwrap_or_else(Utc::now),
         updated_at: parse_dt(row.try_get("updated_at")?).unwrap_or_else(Utc::now),
         masked_management_key: Some(mask_secret(&management_key)),
+        provider_config_hint,
+    })
+}
+
+fn provider_config_hint(
+    provider_type: &crate::quota::ProviderType,
+    raw_secret: &str,
+) -> Option<crate::quota::ProviderConfigHint> {
+    if !matches!(provider_type, crate::quota::ProviderType::Volcengine) {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(raw_secret).ok()?;
+    Some(crate::quota::ProviderConfigHint {
+        region: value
+            .get("region")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        service: value
+            .get("service")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        coding_project_name: value
+            .get("codingProjectName")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        coding_seat_id: value
+            .get("codingSeatId")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
     })
 }
 

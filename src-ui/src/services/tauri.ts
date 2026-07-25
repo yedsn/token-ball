@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ConnectionInput, ProviderConnection, QuotaSummary } from "../types";
+import type { ConnectionInput, DisplaySettings, PluginInput, PluginManifest, ProviderConnection, QuotaSummary } from "../types";
 
 export function listConnections(): Promise<ProviderConnection[]> {
   return invoke("connection_list");
@@ -26,12 +26,40 @@ export function refreshAllQuota(): Promise<QuotaSummary> {
   return invoke("quota_refresh_all");
 }
 
+export function getDisplaySettings(): Promise<DisplaySettings> {
+  return invoke("settings_get_display");
+}
+
+export function saveDisplaySettings(settings: DisplaySettings): Promise<DisplaySettings> {
+  return invoke("settings_save_display", { settings });
+}
+
+export function listPlugins(): Promise<PluginManifest[]> {
+  return invoke("plugin_list");
+}
+
+export function setPluginEnabled(id: string, enabled: boolean): Promise<PluginManifest[]> {
+  return invoke("plugin_set_enabled", { id, enabled });
+}
+
+export function addPlugin(input: PluginInput): Promise<PluginManifest[]> {
+  return invoke("plugin_add", { input });
+}
+
+export function deletePlugin(id: string): Promise<PluginManifest[]> {
+  return invoke("plugin_delete", { id });
+}
+
 export function showWindow(label: string): Promise<void> {
   return invoke("window_show", { label });
 }
 
 export function hideWindow(label: string): Promise<void> {
   return invoke("window_hide", { label });
+}
+
+export function getOrbVisible(): Promise<boolean> {
+  return invoke("orb_get_visible");
 }
 
 export function onQuotaUpdated(callback: (summary: QuotaSummary) => void) {
@@ -48,4 +76,8 @@ export function onRefreshCompleted(callback: (summary: QuotaSummary) => void) {
 
 export function onProviderError(callback: (message: string) => void) {
   return listen<string>("provider://error", (event) => callback(event.payload));
+}
+
+export function onDisplaySettingsUpdated(callback: (settings: DisplaySettings) => void) {
+  return listen<DisplaySettings>("settings://display-updated", (event) => callback(event.payload));
 }

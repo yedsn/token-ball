@@ -5,8 +5,8 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     error::AppResult,
-    providers::cliproxy::CliProxyClient,
-    quota::{ConnectionInput, ProviderConnection},
+    providers::{cliproxy::CliProxyClient, volcengine::VolcengineClient},
+    quota::{ConnectionInput, ProviderConnection, ProviderType},
     storage::repository,
 };
 
@@ -45,6 +45,16 @@ pub async fn connection_test(state: State<'_, Arc<AppState>>, id: String) -> Res
 
 pub async fn test_connection_internal(state: &Arc<AppState>, id: &str) -> AppResult<()> {
     let (connection, key) = repository::get_connection_secret(&state.db, id).await?;
-    let client = CliProxyClient::new(&connection.base_url, &key)?;
-    client.test_connection().await
+    match connection.provider_type {
+        ProviderType::CliProxyApi => {
+            CliProxyClient::new(&connection.base_url, &key)?
+                .test_connection()
+                .await
+        }
+        ProviderType::Volcengine => {
+            VolcengineClient::new(&connection.base_url, &key)?
+                .test_connection()
+                .await
+        }
+    }
 }

@@ -35,8 +35,19 @@ pub fn build_summary(
 
     let last_synced_at = accounts.iter().map(|account| account.synced_at).max();
 
+    let provider = accounts
+        .first()
+        .map(|account| {
+            if account.external_id.starts_with("volcengine-") {
+                ProviderType::Volcengine
+            } else {
+                ProviderType::CliProxyApi
+            }
+        })
+        .unwrap_or(ProviderType::CliProxyApi);
+
     QuotaSummary {
-        provider: ProviderType::CliProxyApi,
+        provider,
         total_accounts,
         available_accounts,
         lowest_remaining_percent,

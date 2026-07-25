@@ -127,5 +127,16 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
     )
     .await?;
 
+    pool.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS plugins (
+            id TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        "#,
+    )
+    .await?;
+
     Ok(())
 }

@@ -12,7 +12,7 @@ export type AccountStatus =
 
 export interface ProviderConnection {
   id: string;
-  providerType: "cliProxyApi";
+  providerType: ProviderType;
   displayName: string;
   baseUrl: string;
   enabled: boolean;
@@ -21,14 +21,47 @@ export interface ProviderConnection {
   createdAt: string;
   updatedAt: string;
   maskedManagementKey?: string | null;
+  providerConfigHint?: {
+    region?: string | null;
+    service?: string | null;
+    codingProjectName?: string | null;
+    codingSeatId?: string | null;
+  } | null;
 }
 
 export interface ConnectionInput {
   id?: string;
+  providerType: ProviderType;
   displayName: string;
   baseUrl: string;
   managementKey: string;
   enabled?: boolean;
+}
+
+export type ProviderType = "cliProxyApi" | "volcengine";
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  category: string;
+  capability: string;
+  permissions: string[];
+  installed: boolean;
+  enabled: boolean;
+  configurable: boolean;
+  builtIn: boolean;
+  settingsKey?: string | null;
+}
+
+export interface PluginInput {
+  id: string;
+  name: string;
+  version: string;
+  category: string;
+  capability: string;
+  permissions: string[];
+  configurable?: boolean;
 }
 
 export interface QuotaWindow {
@@ -72,8 +105,27 @@ export interface RequestActivity {
   failed: number;
 }
 
+export interface DisplaySettings {
+  showTotalRemaining: boolean;
+  showAvailableAccounts: boolean;
+  showConnectionStatus: boolean;
+  showAccountsInTooltip: boolean;
+  showOrbRefreshButton: boolean;
+  orbAnimationEnabled: boolean;
+  trayIconStyle: "orb" | "minimal";
+  selectedAccountIds: string[];
+  customItems: DisplayCustomItem[];
+}
+
+export interface DisplayCustomItem {
+  id: string;
+  label: string;
+  value: string;
+  enabled: boolean;
+}
+
 export interface QuotaSummary {
-  provider: "cliProxyApi";
+  provider: ProviderType;
   totalAccounts: number;
   availableAccounts: number;
   lowestRemainingPercent?: number | null;

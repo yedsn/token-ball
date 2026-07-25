@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum ProviderType {
     CliProxyApi,
+    Volcengine,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -66,12 +67,23 @@ pub struct ProviderConnection {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub masked_management_key: Option<String>,
+    pub provider_config_hint: Option<ProviderConfigHint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfigHint {
+    pub region: Option<String>,
+    pub service: Option<String>,
+    pub coding_project_name: Option<String>,
+    pub coding_seat_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInput {
     pub id: Option<String>,
+    pub provider_type: ProviderType,
     pub display_name: String,
     pub base_url: String,
     pub management_key: String,
@@ -139,6 +151,63 @@ pub struct QuotaSummary {
     pub accounts: Vec<QuotaAccount>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplaySettings {
+    #[serde(default = "default_true")]
+    pub show_total_remaining: bool,
+    #[serde(default = "default_true")]
+    pub show_available_accounts: bool,
+    #[serde(default = "default_true")]
+    pub show_connection_status: bool,
+    #[serde(default = "default_true")]
+    pub show_accounts_in_tooltip: bool,
+    #[serde(default = "default_true")]
+    pub show_orb_refresh_button: bool,
+    #[serde(default = "default_true")]
+    pub orb_animation_enabled: bool,
+    #[serde(default = "default_tray_icon_style")]
+    pub tray_icon_style: String,
+    #[serde(default)]
+    pub selected_account_ids: Vec<String>,
+    #[serde(default)]
+    pub custom_items: Vec<DisplayCustomItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayCustomItem {
+    pub id: String,
+    pub label: String,
+    pub value: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        Self {
+            show_total_remaining: true,
+            show_available_accounts: true,
+            show_connection_status: true,
+            show_accounts_in_tooltip: true,
+            show_orb_refresh_button: true,
+            orb_animation_enabled: true,
+            tray_icon_style: default_tray_icon_style(),
+            selected_account_ids: Vec::new(),
+            custom_items: Vec::new(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_tray_icon_style() -> String {
+    "orb".to_string()
+}
+
 impl Default for QuotaSummary {
     fn default() -> Self {
         Self {
@@ -159,7 +228,15 @@ impl ToString for ProviderType {
     fn to_string(&self) -> String {
         match self {
             ProviderType::CliProxyApi => "cliproxy_api".to_string(),
+            ProviderType::Volcengine => "volcengine".to_string(),
         }
+    }
+}
+
+pub fn parse_provider_type(value: &str) -> ProviderType {
+    match value {
+        "volcengine" | "Volcengine" => ProviderType::Volcengine,
+        _ => ProviderType::CliProxyApi,
     }
 }
 

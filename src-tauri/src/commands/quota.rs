@@ -7,8 +7,11 @@ use crate::{
     app_state::AppState,
     error::AppResult,
     events,
-    providers::cliproxy::{mapper::map_auth_files, wham::enrich_codex_quotas, CliProxyClient},
-    quota::{build_summary, ConnectionStatus, QuotaSummary},
+    providers::{
+        cliproxy::{mapper::map_auth_files, wham::enrich_codex_quotas, CliProxyClient},
+        volcengine::VolcengineClient,
+    },
+    quota::{build_summary, ConnectionStatus, ProviderType, QuotaSummary},
     storage::repository,
 };
 
@@ -76,15 +79,25 @@ pub async fn refresh_all_internal(
     let summary = repository::load_summary(&state.db, any_error.is_some()).await?;
     events::emit_quota_updated(app, &summary);
     events::emit_refresh_completed(app, &summary);
+    crate::tray::update_tray(app, &summary).await;
     Ok(summary)
 }
 
 async fn sync_connection(state: &Arc<AppState>, connection_id: &str) -> AppResult<()> {
     let (connection, key) = repository::get_connection_secret(&state.db, connection_id).await?;
-    let client = CliProxyClient::new(&connection.base_url, &key)?;
-    let payload = client.auth_files().await?;
-    let mut accounts = map_auth_files(&connection.id, &payload);
-    enrich_codex_quotas(&client, &mut accounts).await?;
+    let accounts = match connection.provider_type {
+        ProviderType::CliProxyApi => {
+            let client = CliProxyClient::new(&connection.base_url, &key)?;
+            let payload = client.auth_files().await?;
+            let mut accounts = map_auth_files(&connection.id, &payload);
+            enrich_codex_quotas(&client, &mut accounts).await?;
+            accounts
+        }
+        ProviderType::Volcengine => {
+            let client = VolcengineClient::new(&connection.base_url, &key)?;
+            client.account_snapshot(&connection.id).await?
+        }
+    };
     repository::replace_accounts(&state.db, &accounts).await?;
     let _summary = build_summary(accounts, ConnectionStatus::Healthy, false);
     Ok(())
