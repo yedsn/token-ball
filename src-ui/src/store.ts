@@ -12,6 +12,7 @@ import {
   addPlugin,
   deletePlugin,
   refreshAllQuota,
+  setConnectionEnabled,
   saveDisplaySettings,
   saveConnection,
   listPlugins,
@@ -87,11 +88,17 @@ export const useTokenBallStore = defineStore("token-ball", {
   },
   actions: {
     async init() {
-      const [connections, summary, displaySettings, plugins] = await Promise.all([listConnections(), getLatestQuota(), getDisplaySettings(), listPlugins()]);
-      this.connections = connections;
-      this.summary = summary;
-      this.displaySettings = normalizeDisplaySettings(displaySettings);
-      this.plugins = plugins;
+      const [connectionsR, summaryR, displayR, pluginsR] = await Promise.allSettled([
+        listConnections(),
+        getLatestQuota(),
+        getDisplaySettings(),
+        listPlugins(),
+      ]);
+      if (connectionsR.status === "fulfilled") this.connections = connectionsR.value;
+      else this.error = `加载连接列表失败：${connectionsR.reason}`;
+      if (summaryR.status === "fulfilled") this.summary = summaryR.value;
+      if (displayR.status === "fulfilled") this.displaySettings = normalizeDisplaySettings(displayR.value);
+      if (pluginsR.status === "fulfilled") this.plugins = pluginsR.value;
       this.ready = true;
       await onQuotaUpdated((summary) => (this.summary = summary));
       await onRefreshStarted(() => (this.refreshing = true));
@@ -124,6 +131,12 @@ export const useTokenBallStore = defineStore("token-ball", {
     async deleteCliProxyConnection(id: string) {
       await deleteConnection(id);
       this.connections = await listConnections();
+    },
+    async toggleConnectionEnabled(id: string, enabled: boolean) {
+      const connection = await setConnectionEnabled(id, enabled);
+      this.connections = this.connections.map((item) =>
+        item.id === id ? { ...item, enabled: connection.enabled } : item
+      );
     },
     async togglePlugin(id: string, enabled: boolean) {
       this.plugins = await setPluginEnabled(id, enabled);

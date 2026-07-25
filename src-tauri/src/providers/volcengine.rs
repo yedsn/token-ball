@@ -22,10 +22,20 @@ pub struct VolcengineConfig {
     pub region: String,
     #[serde(default = "default_service")]
     pub service: String,
+    #[serde(default = "default_channel")]
+    pub channel: String,
+    #[serde(default = "default_true")]
+    pub sync_agent_plan: bool,
+    #[serde(default = "default_true")]
+    pub sync_coding_plan: bool,
     #[serde(default)]
     pub coding_project_name: Option<String>,
     #[serde(default)]
     pub coding_seat_id: Option<String>,
+    #[serde(default)]
+    pub coding_web_base_url: Option<String>,
+    #[serde(default)]
+    pub coding_web_cookie: Option<String>,
 }
 
 #[derive(Clone)]
@@ -45,11 +55,22 @@ impl VolcengineClient {
         config.secret_access_key = config.secret_access_key.trim().to_string();
         config.region = config.region.trim().to_string();
         config.service = config.service.trim().to_string();
+        config.channel = config.channel.trim().to_string();
         config.coding_project_name = trim_optional(config.coding_project_name);
         config.coding_seat_id = trim_optional(config.coding_seat_id);
-        if config.access_key_id.trim().is_empty() || config.secret_access_key.trim().is_empty() {
+        config.coding_web_base_url = trim_optional(config.coding_web_base_url);
+        config.coding_web_cookie = trim_optional(config.coding_web_cookie);
+        if !config.channel.eq_ignore_ascii_case("web")
+            && (config.access_key_id.trim().is_empty()
+                || config.secret_access_key.trim().is_empty())
+        {
             return Err(AppError::Message(
                 "火山引擎 Access Key ID 和 Secret Access Key 不能为空".to_string(),
+            ));
+        }
+        if config.channel.eq_ignore_ascii_case("web") && config.coding_web_cookie.is_none() {
+            return Err(AppError::Message(
+                "火山引擎页面渠道需要填写控制台 Cookie".to_string(),
             ));
         }
         if config.region.is_empty() {
@@ -57,6 +78,9 @@ impl VolcengineClient {
         }
         if config.service.is_empty() {
             config.service = default_service();
+        }
+        if config.channel.is_empty() {
+            config.channel = default_channel();
         }
         Ok(Self {
             client: Client::builder()
@@ -68,38 +92,56 @@ impl VolcengineClient {
     }
 
     pub async fn test_connection(&self) -> AppResult<()> {
-        self.get_afp_usage().await.map(|_| ())
+        if self.is_web_channel() {
+            self.get_coding_plan_usage_from_web().await.map(|_| ())
+        } else {
+            self.get_afp_usage().await.map(|_| ())
+        }
     }
 
     pub async fn account_snapshot(&self, connection_id: &str) -> AppResult<Vec<QuotaAccount>> {
-        let usage = self.get_afp_usage().await?;
-        let plan_type = usage
-            .result
-            .plan_type
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| "Agent Plan".to_string());
-        let windows = build_windows(&usage.result);
-        let mut accounts = vec![QuotaAccount {
-            id: format!("{connection_id}:volcengine-afp"),
-            connection_id: connection_id.to_string(),
-            external_id: "volcengine-afp".to_string(),
-            display_name: "Agent Plan AFP".to_string(),
-            masked_identifier: Some(mask_ak(&self.config.access_key_id)),
-            plan_name: format!("{plan_type} · GetAFPUsage"),
-            status: AccountStatus::Available,
-            critical_window_id: critical_window_id(&windows),
-            next_reset_at: windows.iter().filter_map(|window| window.reset_at).min(),
-            windows,
-            success_count: None,
-            failed_count: None,
-            recent_requests: Vec::new(),
-            subscription_until: None,
-            chatgpt_account_id: None,
-            synced_at: Utc::now(),
-        }];
+        let mut accounts = Vec::new();
+        if self.config.sync_agent_plan && !self.is_web_channel() {
+            let usage = self.get_afp_usage().await?;
+            let plan_type = usage
+                .result
+                .plan_type
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| "Agent Plan".to_string());
+            let windows = build_windows(&usage.result);
+            accounts.push(QuotaAccount {
+                id: format!("{connection_id}:volcengine-afp"),
+                connection_id: connection_id.to_string(),
+                external_id: "volcengine-afp".to_string(),
+                display_name: "Agent Plan AFP".to_string(),
+                masked_identifier: Some(mask_ak(&self.config.access_key_id)),
+                plan_name: format!("{plan_type} · GetAFPUsage"),
+                status: AccountStatus::Available,
+                critical_window_id: critical_window_id(&windows),
+                next_reset_at: windows.iter().filter_map(|window| window.reset_at).min(),
+                windows,
+                success_count: None,
+                failed_count: None,
+                recent_requests: Vec::new(),
+                subscription_until: None,
+                chatgpt_account_id: None,
+                synced_at: Utc::now(),
+            });
+        } else if self.config.sync_agent_plan && self.is_web_channel() {
+            accounts.push(agent_placeholder_account(
+                connection_id,
+                "页面渠道暂未接入 Agent Plan 接口".to_string(),
+            ));
+        }
 
-        if self.config.coding_seat_id.is_none() {
+        if !self.config.sync_coding_plan {
+            return Ok(accounts);
+        }
+
+        if self.is_web_channel() {
+            accounts.push(self.web_coding_plan_account(connection_id).await?);
+        } else if self.config.coding_seat_id.is_none() {
             accounts.push(self.personal_coding_plan_account(connection_id).await?);
         } else if let Some(seat_usages) = self.list_seat_info_usages().await? {
             if seat_usages.is_empty() {
@@ -146,20 +188,20 @@ impl VolcengineClient {
         Ok(accounts)
     }
 
+    fn is_web_channel(&self) -> bool {
+        self.config.channel.eq_ignore_ascii_case("web")
+    }
+
     async fn personal_coding_plan_account(&self, connection_id: &str) -> AppResult<QuotaAccount> {
         let plan = self.get_personal_plan("CodingPlan").await?;
-        let hourly_details = self.get_usage_details("Hour", 1).await?;
-        let daily_details = self.get_usage_details("Day", 30).await?;
-        let windows = build_personal_coding_windows(
-            &hourly_details.result.details,
-            &daily_details.result.details,
-            Utc::now(),
-        );
+        let windows = self.personal_coding_usage_detail_windows().await?;
         let status = match plan.result.status.as_deref() {
             Some("Running") => AccountStatus::Available,
             Some("Expired") => AccountStatus::Exhausted,
             _ => AccountStatus::Unknown,
         };
+        let critical_window_id = critical_window_id(&windows);
+        let next_reset_at = windows.iter().filter_map(|window| window.reset_at).min();
         Ok(QuotaAccount {
             id: format!("{connection_id}:volcengine-coding-plan"),
             connection_id: connection_id.to_string(),
@@ -179,8 +221,8 @@ impl VolcengineClient {
             ),
             status,
             windows,
-            critical_window_id: None,
-            next_reset_at: None,
+            critical_window_id,
+            next_reset_at,
             success_count: None,
             failed_count: None,
             recent_requests: Vec::new(),
@@ -188,6 +230,45 @@ impl VolcengineClient {
             chatgpt_account_id: None,
             synced_at: Utc::now(),
         })
+    }
+
+    async fn web_coding_plan_account(&self, connection_id: &str) -> AppResult<QuotaAccount> {
+        let usage = self.get_coding_plan_usage_from_web().await?;
+        let windows = usage
+            .result
+            .as_ref()
+            .map(|result| build_web_coding_windows(result))
+            .unwrap_or_default();
+        let critical_window_id = critical_window_id(&windows);
+        let next_reset_at = windows.iter().filter_map(|window| window.reset_at).min();
+        Ok(QuotaAccount {
+            id: format!("{connection_id}:volcengine-coding-plan-web"),
+            connection_id: connection_id.to_string(),
+            external_id: "volcengine-coding-plan-web".to_string(),
+            display_name: "Coding Plan 个人版".to_string(),
+            masked_identifier: Some("控制台 Cookie".to_string()),
+            plan_name: "页面渠道 · GetCodingPlanUsage".to_string(),
+            status: AccountStatus::Available,
+            windows,
+            critical_window_id,
+            next_reset_at,
+            success_count: None,
+            failed_count: None,
+            recent_requests: Vec::new(),
+            subscription_until: None,
+            chatgpt_account_id: None,
+            synced_at: Utc::now(),
+        })
+    }
+
+    async fn personal_coding_usage_detail_windows(&self) -> AppResult<Vec<QuotaWindow>> {
+        let hourly_details = self.get_usage_details("Hour", 1).await?;
+        let daily_details = self.get_usage_details("Day", 30).await?;
+        Ok(build_personal_coding_windows(
+            &hourly_details.result.details,
+            &daily_details.result.details,
+            Utc::now(),
+        ))
     }
 
     async fn get_afp_usage(&self) -> AppResult<GetAfpUsageResponse> {
@@ -227,6 +308,59 @@ impl VolcengineClient {
         })
         .to_string();
         self.openapi_post(&params, &body).await
+    }
+
+    async fn get_coding_plan_usage_from_web(&self) -> AppResult<WebCodingPlanUsageResponse> {
+        let cookie = self
+            .config
+            .coding_web_cookie
+            .as_deref()
+            .ok_or_else(|| AppError::Message("火山控制台 Cookie 为空".to_string()))?;
+        let base_url = self
+            .config
+            .coding_web_base_url
+            .as_deref()
+            .unwrap_or("https://console.volcengine.com/api/top");
+        let region = self.config.region.trim();
+        let service = self.config.service.trim();
+        let url = build_web_coding_usage_url(base_url, service, region)?;
+        let project_name = self.config.coding_project_name.as_deref();
+        let body = if let Some(project_name) = project_name {
+            serde_json::json!({ "ProjectName": project_name }).to_string()
+        } else {
+            "{}".to_string()
+        };
+        let csrf_token = extract_cookie_value(cookie, "csrfToken").unwrap_or_default();
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Origin", "https://console.volcengine.com")
+            .header(
+                "Referer",
+                "https://console.volcengine.com/ark/region:cn-beijing/model-settings/coding-plan",
+            )
+            .header("Cookie", cookie)
+            .header("x-csrf-token", csrf_token)
+            .body(body)
+            .send()
+            .await?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(AppError::Message(format!(
+                "火山控制台 Coding Plan 接口返回 HTTP {}：{}",
+                status, text
+            )));
+        }
+        serde_json::from_str(&text).map_err(|error| {
+            AppError::Message(format!(
+                "火山控制台 Coding Plan 响应不是有效 JSON：{}；响应前 500 字符：{}",
+                error,
+                text.chars().take(500).collect::<String>()
+            ))
+        })
     }
 
     async fn list_seat_info_usages(&self) -> AppResult<Option<Vec<SeatInfoUsage>>> {
@@ -471,6 +605,29 @@ struct SeatInfoUsage {
     monthly_usage: Option<f64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct WebCodingPlanUsageResponse {
+    #[serde(default)]
+    result: Option<WebCodingPlanUsageResult>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct WebCodingPlanUsageResult {
+    #[serde(default)]
+    quota_usage: Vec<WebCodingQuotaUsage>,
+    update_timestamp: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct WebCodingQuotaUsage {
+    level: String,
+    percent: Option<f64>,
+    reset_timestamp: Option<i64>,
+}
+
 fn build_windows(result: &AfpUsageResult) -> Vec<QuotaWindow> {
     [
         (
@@ -619,6 +776,53 @@ fn build_personal_coding_windows(
     ]
 }
 
+fn build_web_coding_windows(result: &WebCodingPlanUsageResult) -> Vec<QuotaWindow> {
+    let order = ["session", "weekly", "monthly"];
+    let mut items: Vec<_> = result.quota_usage.iter().collect();
+    items.sort_by_key(|item| {
+        order
+            .iter()
+            .position(|level| *level == item.level)
+            .unwrap_or(order.len())
+    });
+    items
+        .into_iter()
+        .filter_map(|item| web_coding_window(item, result.update_timestamp))
+        .collect()
+}
+
+fn web_coding_window(
+    item: &WebCodingQuotaUsage,
+    update_timestamp: Option<i64>,
+) -> Option<QuotaWindow> {
+    let used_percent = item.percent?;
+    let remaining_percent = (100.0 - used_percent).clamp(0.0, 100.0);
+    let (name, period_type, period_seconds) = match item.level.as_str() {
+        "session" => ("当前会话", PeriodType::Custom, None),
+        "weekly" => ("近 1 周", PeriodType::Weekly, Some(7 * 24 * 60 * 60)),
+        "monthly" => ("近 1 月", PeriodType::Monthly, Some(30 * 24 * 60 * 60)),
+        value => (value, PeriodType::Unknown, None),
+    };
+    Some(QuotaWindow {
+        id: format!("coding-web-{}", item.level),
+        name: name.to_string(),
+        period_type,
+        period_seconds,
+        total: Some(100.0),
+        used: Some(used_percent),
+        remaining: Some(remaining_percent),
+        remaining_percent: Some(remaining_percent),
+        unit: QuotaUnit::Percent,
+        reset_at: item
+            .reset_timestamp
+            .or(update_timestamp)
+            .and_then(timestamp_seconds_or_millis),
+        is_active: true,
+        is_current_constraint: true,
+        data_source: "volcengine-web:GetCodingPlanUsage".to_string(),
+    })
+}
+
 fn usage_window(
     id: &str,
     name: &str,
@@ -748,6 +952,27 @@ fn coding_placeholder_account(connection_id: &str, plan_name: String) -> QuotaAc
     }
 }
 
+fn agent_placeholder_account(connection_id: &str, plan_name: String) -> QuotaAccount {
+    QuotaAccount {
+        id: format!("{connection_id}:volcengine-afp"),
+        connection_id: connection_id.to_string(),
+        external_id: "volcengine-afp".to_string(),
+        display_name: "Agent Plan AFP".to_string(),
+        masked_identifier: None,
+        plan_name,
+        status: AccountStatus::Unknown,
+        windows: Vec::new(),
+        critical_window_id: None,
+        next_reset_at: None,
+        success_count: None,
+        failed_count: None,
+        recent_requests: Vec::new(),
+        subscription_until: None,
+        chatgpt_account_id: None,
+        synced_at: Utc::now(),
+    }
+}
+
 fn critical_window_id(windows: &[QuotaWindow]) -> Option<String> {
     windows
         .iter()
@@ -788,6 +1013,36 @@ fn percent_encode(value: &str) -> String {
 
 fn timestamp_millis(value: i64) -> Option<DateTime<Utc>> {
     Utc.timestamp_millis_opt(value).single()
+}
+
+fn extract_cookie_value(cookie_header: &str, name: &str) -> Option<String> {
+    for pair in cookie_header.split(';') {
+        let pair = pair.trim();
+        if let Some((key, value)) = pair.split_once('=') {
+            if key.trim() == name {
+                return Some(value.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+fn build_web_coding_usage_url(base_url: &str, service: &str, region: &str) -> AppResult<Url> {
+    let base_url = if base_url.ends_with('/') {
+        base_url.to_string()
+    } else {
+        format!("{base_url}/")
+    };
+    let path = format!("{service}/{region}/2024-01-01/GetCodingPlanUsage");
+    Ok(Url::parse(&base_url)?.join(&path)?)
+}
+
+fn timestamp_seconds_or_millis(value: i64) -> Option<DateTime<Utc>> {
+    if value > 10_000_000_000 {
+        Utc.timestamp_millis_opt(value).single()
+    } else {
+        Utc.timestamp_opt(value, 0).single()
+    }
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -851,6 +1106,14 @@ fn default_region() -> String {
 
 fn default_service() -> String {
     "ark".to_string()
+}
+
+fn default_channel() -> String {
+    "official".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -1024,6 +1287,35 @@ mod tests {
     }
 
     #[test]
+    fn parses_web_coding_plan_usage_windows() {
+        let raw = r#"
+        {
+          "ResponseMetadata": { "Action": "GetCodingPlanUsage" },
+          "Result": {
+            "Status": "Running",
+            "QuotaUsage": [
+              { "Level": "monthly", "Percent": 13.14, "ResetTimestamp": 1787327999 },
+              { "Level": "session", "Percent": 0, "ResetTimestamp": -1 },
+              { "Level": "weekly", "Percent": 37.55, "ResetTimestamp": 1785081600 }
+            ],
+            "UpdateTimestamp": 1784995200
+          }
+        }
+        "#;
+        let response: WebCodingPlanUsageResponse = serde_json::from_str(raw).unwrap();
+        let windows = build_web_coding_windows(response.result.as_ref().unwrap());
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0].name, "当前会话");
+        assert_eq!(windows[0].used, Some(0.0));
+        assert_eq!(windows[0].remaining_percent, Some(100.0));
+        assert_eq!(windows[1].name, "近 1 周");
+        assert_eq!(windows[1].unit, QuotaUnit::Percent);
+        assert_eq!(windows[1].total, Some(100.0));
+        assert!(windows[1].remaining_percent.unwrap() > 62.0);
+        assert_eq!(windows[2].name, "近 1 月");
+    }
+
+    #[test]
     fn canonical_query_encodes_project_values() {
         let query = canonical_query(&[
             ("Version", "2024-01-01".to_string()),
@@ -1040,5 +1332,29 @@ mod tests {
             vec!["S1", "S2", "S3", "S4"]
         );
         assert!(coding_seat_ids(Some("  ")).is_none());
+    }
+
+    #[test]
+    fn extracts_csrf_token_from_cookie() {
+        let cookie = "session=abc; csrfToken=token123; other=xyz";
+        assert_eq!(
+            extract_cookie_value(cookie, "csrfToken"),
+            Some("token123".to_string())
+        );
+        assert_eq!(extract_cookie_value(cookie, "missing"), None);
+    }
+
+    #[test]
+    fn builds_web_coding_usage_url_without_dropping_api_top_path() {
+        let url = build_web_coding_usage_url(
+            "https://console.volcengine.com/api/top",
+            "ark",
+            "cn-beijing",
+        )
+        .unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://console.volcengine.com/api/top/ark/cn-beijing/2024-01-01/GetCodingPlanUsage"
+        );
     }
 }

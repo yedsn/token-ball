@@ -37,6 +37,17 @@ pub async fn connection_delete(state: State<'_, Arc<AppState>>, id: String) -> R
 }
 
 #[tauri::command]
+pub async fn connection_set_enabled(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    enabled: bool,
+) -> Result<ProviderConnection, String> {
+    repository::set_connection_enabled(&state.db, &id, enabled)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn connection_test(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     test_connection_internal(&state, &id)
         .await

@@ -77,7 +77,7 @@ fn merge_volcengine_secret(existing: &str, input_secret: &str) -> AppResult<Stri
     let mut input: serde_json::Value =
         serde_json::from_str(input_secret).map_err(|error| AppError::Message(error.to_string()))?;
     let existing: serde_json::Value = serde_json::from_str(existing).unwrap_or_default();
-    for key in ["accessKeyId", "secretAccessKey"] {
+    for key in ["accessKeyId", "secretAccessKey", "codingWebCookie"] {
         let is_empty = input
             .get(key)
             .and_then(|value| value.as_str())
@@ -148,6 +148,26 @@ pub async fn delete_connection(pool: &SqlitePool, id: &str) -> AppResult<()> {
         .execute(pool)
         .await?;
     Ok(())
+}
+
+pub async fn set_connection_enabled(
+    pool: &SqlitePool,
+    id: &str,
+    enabled: bool,
+) -> AppResult<ProviderConnection> {
+    sqlx::query(
+        r#"
+        UPDATE provider_connections
+        SET enabled = ?2, updated_at = ?3
+        WHERE id = ?1
+        "#,
+    )
+    .bind(id)
+    .bind(enabled as i64)
+    .bind(Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    get_connection(pool, id).await
 }
 
 pub async fn update_connection_status(
@@ -336,7 +356,7 @@ pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
         ("orb.size", "84"),
         ("orb.visible", "true"),
         ("orb.carouselIntervalMs", "4000"),
-        ("sync.intervalSeconds", "180"),
+        ("sync.intervalSeconds", "3600"),
     ] {
         sqlx::query(
             r#"
@@ -652,6 +672,28 @@ fn provider_config_hint(
             .get("service")
             .and_then(|value| value.as_str())
             .map(|value| value.to_string()),
+        has_access_key_id: value
+            .get("accessKeyId")
+            .and_then(|value| value.as_str())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
+        has_secret_access_key: value
+            .get("secretAccessKey")
+            .and_then(|value| value.as_str())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
+        channel: value
+            .get("channel")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        sync_agent_plan: value
+            .get("syncAgentPlan")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true),
+        sync_coding_plan: value
+            .get("syncCodingPlan")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true),
         coding_project_name: value
             .get("codingProjectName")
             .and_then(|value| value.as_str())
@@ -660,6 +702,15 @@ fn provider_config_hint(
             .get("codingSeatId")
             .and_then(|value| value.as_str())
             .map(|value| value.to_string()),
+        coding_web_base_url: value
+            .get("codingWebBaseUrl")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        has_coding_web_cookie: value
+            .get("codingWebCookie")
+            .and_then(|value| value.as_str())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
     })
 }
 

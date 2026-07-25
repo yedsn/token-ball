@@ -59,6 +59,7 @@ pub fn run() {
             commands::connection_save,
             commands::connection_delete,
             commands::connection_test,
+            commands::connection_set_enabled,
             commands::plugin_list,
             commands::plugin_set_enabled,
             commands::plugin_add,

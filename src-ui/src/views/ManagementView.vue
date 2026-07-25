@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { Blocks, CheckCircle2, Gauge, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi } from "lucide-vue-next";
+import { Power } from "lucide-vue-next";
 import { useTokenBallStore } from "../store";
 import { getOrbVisible, hideWindow, showWindow } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
@@ -27,8 +28,13 @@ const form = reactive({
   volcengineSecretAccessKey: "",
   volcengineRegion: "cn-beijing",
   volcengineService: "ark",
+  volcengineChannel: "official",
+  volcengineSyncAgentPlan: true,
+  volcengineSyncCodingPlan: true,
   volcengineCodingProjectName: "default",
-  volcengineCodingSeatId: ""
+  volcengineCodingSeatId: "",
+  volcengineCodingWebBaseUrl: "https://console.volcengine.com/api/top",
+  volcengineCodingWebCookie: ""
 });
 
 const providerGroups = computed(() => [
@@ -70,6 +76,9 @@ const pageDescription = computed(() => {
 });
 
 const currentProviderName = computed(() => providerLabel(form.providerType));
+const savedAccessKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasAccessKeyId ? "已保存，留空沿用" : "未保存");
+const savedSecretKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasSecretAccessKey ? "已保存，留空沿用" : "未保存");
+const savedWebCookieLabel = computed(() => currentConnection.value?.providerConfigHint?.hasCodingWebCookie ? "已保存，留空沿用" : "未保存");
 
 const totalRemainingLabel = computed(() => {
   const percent = store.totalRemainingPercent;
@@ -119,8 +128,13 @@ function selectConnection(connection: ProviderConnection) {
   form.volcengineSecretAccessKey = "";
   form.volcengineRegion = connection.providerConfigHint?.region || "cn-beijing";
   form.volcengineService = connection.providerConfigHint?.service || "ark";
+  form.volcengineChannel = connection.providerConfigHint?.channel || "official";
+  form.volcengineSyncAgentPlan = connection.providerConfigHint?.syncAgentPlan ?? true;
+  form.volcengineSyncCodingPlan = connection.providerConfigHint?.syncCodingPlan ?? true;
   form.volcengineCodingProjectName = connection.providerConfigHint?.codingProjectName || "default";
   form.volcengineCodingSeatId = connection.providerConfigHint?.codingSeatId || "";
+  form.volcengineCodingWebBaseUrl = connection.providerConfigHint?.codingWebBaseUrl || "https://console.volcengine.com/api/top";
+  form.volcengineCodingWebCookie = "";
   notice.value = "";
   page.value = "instance";
 }
@@ -135,8 +149,13 @@ function newConnection(providerType: ProviderType = "cliProxyApi") {
   form.volcengineSecretAccessKey = "";
   form.volcengineRegion = "cn-beijing";
   form.volcengineService = "ark";
+  form.volcengineChannel = "official";
+  form.volcengineSyncAgentPlan = providerType === "volcengine";
+  form.volcengineSyncCodingPlan = providerType === "volcengine";
   form.volcengineCodingProjectName = "default";
   form.volcengineCodingSeatId = "";
+  form.volcengineCodingWebBaseUrl = "https://console.volcengine.com/api/top";
+  form.volcengineCodingWebCookie = "";
   notice.value = "";
   page.value = "instance";
 }
@@ -158,8 +177,13 @@ function connectionPayload() {
       secretAccessKey,
       region: form.volcengineRegion.trim() || current?.providerConfigHint?.region || "cn-beijing",
       service: form.volcengineService.trim() || current?.providerConfigHint?.service || "ark",
+      channel: form.volcengineChannel,
+      syncAgentPlan: form.volcengineSyncAgentPlan,
+      syncCodingPlan: form.volcengineSyncCodingPlan,
       codingProjectName: form.volcengineCodingProjectName.trim(),
-      codingSeatId: form.volcengineCodingSeatId.trim()
+      codingSeatId: form.volcengineCodingSeatId.trim(),
+      codingWebBaseUrl: form.volcengineCodingWebBaseUrl.trim() || "https://console.volcengine.com/api/top",
+      codingWebCookie: form.volcengineCodingWebCookie.trim()
     })
   };
 }
@@ -175,8 +199,13 @@ async function save() {
     form.managementKey = "";
     form.volcengineAccessKeyId = "";
     form.volcengineSecretAccessKey = "";
+    form.volcengineCodingWebCookie = "";
+    form.volcengineChannel = connection.providerConfigHint?.channel || form.volcengineChannel;
+    form.volcengineSyncAgentPlan = connection.providerConfigHint?.syncAgentPlan ?? form.volcengineSyncAgentPlan;
+    form.volcengineSyncCodingPlan = connection.providerConfigHint?.syncCodingPlan ?? form.volcengineSyncCodingPlan;
     form.volcengineCodingProjectName = connection.providerConfigHint?.codingProjectName || form.volcengineCodingProjectName;
     form.volcengineCodingSeatId = connection.providerConfigHint?.codingSeatId || form.volcengineCodingSeatId;
+    form.volcengineCodingWebBaseUrl = connection.providerConfigHint?.codingWebBaseUrl || form.volcengineCodingWebBaseUrl;
     notice.value = "连接已保存";
     return connection;
   } catch (error) {
@@ -191,7 +220,7 @@ async function test() {
   testing.value = true;
   notice.value = "";
   try {
-    const hasVolcengineSecret = form.providerType === "volcengine" && (form.volcengineAccessKeyId.trim() || form.volcengineSecretAccessKey.trim());
+    const hasVolcengineSecret = form.providerType === "volcengine" && (form.volcengineAccessKeyId.trim() || form.volcengineSecretAccessKey.trim() || form.volcengineCodingWebCookie.trim());
     const connection = form.managementKey.trim() || hasVolcengineSecret ? await save() : currentConnection.value;
     const id = connection?.id;
     if (!id) return;
@@ -212,6 +241,7 @@ async function removeCurrent() {
   form.managementKey = "";
   form.volcengineAccessKeyId = "";
   form.volcengineSecretAccessKey = "";
+  form.volcengineCodingWebCookie = "";
   form.volcengineCodingProjectName = "";
   form.volcengineCodingSeatId = "";
   notice.value = "连接已删除";
@@ -284,12 +314,13 @@ function providerLabel(providerType: ProviderType) {
 }
 
 function providerHelp(providerType: ProviderType) {
-  if (providerType === "volcengine") return "Access Key 用于查询 Agent Plan；个人版 Coding Plan 默认调用 GetPersonalPlan 和 GetUsageDetails。SeatIDs 仅用于高级席位查询。";
+  if (providerType === "volcengine") return "官方渠道使用 Access Key 查询 OpenAPI；页面渠道使用控制台 Cookie 查询 Coding Plan 用量。可以按计划类型拆成多个实例。";
   return "这里需要 remote-management.secret-key 或 MANAGEMENT_PASSWORD，不是普通 API Key。";
 }
 
 function canTestConnection() {
   if (currentConnection.value) return true;
+  if (form.providerType === "volcengine" && form.volcengineChannel === "web") return Boolean(form.volcengineCodingWebCookie.trim());
   if (form.providerType === "volcengine") return Boolean(form.volcengineAccessKeyId.trim() && form.volcengineSecretAccessKey.trim());
   return Boolean(form.managementKey.trim());
 }
@@ -390,17 +421,23 @@ function dateLabel(value?: string | null) {
         <div class="provider-title"><Wifi :size="14" />{{ group.title }}</div>
         <div class="instance-list">
           <button type="button" class="instance-add" @click="newConnection(group.providerType)"><Plus :size="14" />新增实例</button>
-          <button
+          <div
             v-for="connection in group.connections"
             :key="connection.id"
-            type="button"
             class="instance-item"
-            :class="{ active: page === 'instance' && connection.id === form.id }"
+            :class="{ active: page === 'instance' && connection.id === form.id, enabled: connection.enabled }"
             @click="selectConnection(connection)"
           >
             <strong>{{ connection.displayName }}</strong>
             <span>{{ connection.status }} · {{ connection.baseUrl }}</span>
-          </button>
+            <button
+              type="button"
+              class="instance-toggle"
+              :class="{ enabled: connection.enabled }"
+              :title="connection.enabled ? '已启用，点击停用' : '已停用，点击启用'"
+              @click.stop="store.toggleConnectionEnabled(connection.id, !connection.enabled)"
+            ><Power :size="12" /></button>
+          </div>
         </div>
       </div>
     </aside>
@@ -634,20 +671,38 @@ function dateLabel(value?: string | null) {
             </select>
           </label>
           <label>显示名称<input v-model="form.displayName" /></label>
-          <label>{{ form.providerType === 'volcengine' ? 'OpenAPI Host' : '服务地址' }}<input v-model="form.baseUrl" :placeholder="form.providerType === 'volcengine' ? 'https://open.volcengineapi.com' : ''" /></label>
+          <label v-if="form.providerType !== 'volcengine' || form.volcengineChannel === 'official'">{{ form.providerType === 'volcengine' ? 'OpenAPI Host' : '服务地址' }}<input v-model="form.baseUrl" :placeholder="form.providerType === 'volcengine' ? 'https://open.volcengineapi.com' : ''" /></label>
           <template v-if="form.providerType === 'volcengine'">
-            <label>Access Key ID<input v-model="form.volcengineAccessKeyId" autocomplete="off" placeholder="例如 AKLT..." /></label>
-            <label>Secret Access Key<input v-model="form.volcengineSecretAccessKey" type="password" autocomplete="off" placeholder="保存后不会回显" /></label>
-            <label>Region<input v-model="form.volcengineRegion" placeholder="cn-beijing" /></label>
-            <label>Service<input v-model="form.volcengineService" placeholder="ark" /></label>
-            <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="席位查询可选，默认 default" /></label>
-            <label>Coding SeatIDs<input v-model="form.volcengineCodingSeatId" placeholder="高级席位查询可选，多个用逗号分隔" /></label>
+            <label>渠道类型
+              <select v-model="form.volcengineChannel">
+                <option value="official">官方渠道</option>
+                <option value="web">页面渠道</option>
+              </select>
+            </label>
+            <div class="inline-options">
+              <label class="inline-check"><input type="checkbox" v-model="form.volcengineSyncAgentPlan" />Agent Plan</label>
+              <label class="inline-check"><input type="checkbox" v-model="form.volcengineSyncCodingPlan" />Coding Plan</label>
+            </div>
+            <template v-if="form.volcengineChannel === 'official'">
+              <label>Access Key ID<input v-model="form.volcengineAccessKeyId" autocomplete="off" placeholder="例如 AKLT..." /><small>{{ savedAccessKeyLabel }}</small></label>
+              <label>Secret Access Key<input v-model="form.volcengineSecretAccessKey" type="password" autocomplete="off" placeholder="保存后不会回显" /><small>{{ savedSecretKeyLabel }}</small></label>
+              <label>Region<input v-model="form.volcengineRegion" placeholder="cn-beijing" /></label>
+              <label>Service<input v-model="form.volcengineService" placeholder="ark" /></label>
+              <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="席位查询可选，默认 default" /></label>
+              <label>Coding SeatIDs<input v-model="form.volcengineCodingSeatId" placeholder="高级席位查询可选，多个用逗号分隔" /></label>
+            </template>
+            <template v-else>
+              <label>控制台 API Host<input v-model="form.volcengineCodingWebBaseUrl" placeholder="https://console.volcengine.com/api/top" /></label>
+              <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="默认 default" /></label>
+              <label>控制台 Cookie<textarea v-model="form.volcengineCodingWebCookie" autocomplete="off" placeholder="从 console.volcengine.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedWebCookieLabel }}</small></label>
+            </template>
           </template>
           <label v-else>管理 Key<input v-model="form.managementKey" type="password" autocomplete="off" /></label>
           <p class="muted">{{ providerHelp(form.providerType) }}</p>
           <div class="actions">
             <button class="primary" type="submit" :disabled="saving"><Save :size="16" />保存</button>
             <button type="button" @click="test" :disabled="testing || !canTestConnection()"><CheckCircle2 :size="16" />测试</button>
+            <button type="button" v-if="currentConnection" @click="store.toggleConnectionEnabled(currentConnection.id, !currentConnection.enabled)"><Power :size="16" />{{ currentConnection.enabled ? '停用' : '启用' }}</button>
             <button type="button" @click="removeCurrent" :disabled="!currentConnection"><Trash2 :size="16" />删除</button>
           </div>
           <p v-if="currentConnection" class="muted">已保存：{{ currentConnection.displayName }} · {{ providerLabel(currentConnection.providerType) }} · {{ currentConnection.maskedManagementKey }}</p>

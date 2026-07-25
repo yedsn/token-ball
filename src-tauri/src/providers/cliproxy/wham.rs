@@ -28,10 +28,17 @@ pub async fn enrich_codex_quotas(
             match fetch_wham_usage(client, &account.external_id, &account_id).await {
                 Ok(payload) => apply_wham_usage(account, &payload),
                 Err(error) => {
-                    if account.windows.is_empty() {
+                    let error_str = error.to_string();
+                    let is_service_unavailable =
+                        error_str.contains("503") || error_str.contains("Service Unavailable");
+                    if account.windows.is_empty() && !is_service_unavailable {
                         account.status = AccountStatus::Warning;
                     }
-                    tracing::warn!(account = %account.display_name, error = %String::from(error), "codex quota query failed");
+                    if is_service_unavailable {
+                        tracing::debug!(account = %account.display_name, error = %error_str, "wham service unavailable, keeping existing status");
+                    } else {
+                        tracing::warn!(account = %account.display_name, error = %error_str, "codex quota query failed");
+                    }
                 }
             }
         }

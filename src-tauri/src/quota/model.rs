@@ -75,8 +75,15 @@ pub struct ProviderConnection {
 pub struct ProviderConfigHint {
     pub region: Option<String>,
     pub service: Option<String>,
+    pub has_access_key_id: bool,
+    pub has_secret_access_key: bool,
+    pub channel: Option<String>,
+    pub sync_agent_plan: bool,
+    pub sync_coding_plan: bool,
     pub coding_project_name: Option<String>,
     pub coding_seat_id: Option<String>,
+    pub coding_web_base_url: Option<String>,
+    pub has_coding_web_cookie: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

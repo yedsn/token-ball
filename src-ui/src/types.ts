@@ -24,8 +24,15 @@ export interface ProviderConnection {
   providerConfigHint?: {
     region?: string | null;
     service?: string | null;
+    hasAccessKeyId?: boolean;
+    hasSecretAccessKey?: boolean;
+    channel?: string | null;
+    syncAgentPlan?: boolean;
+    syncCodingPlan?: boolean;
     codingProjectName?: string | null;
     codingSeatId?: string | null;
+    codingWebBaseUrl?: string | null;
+    hasCodingWebCookie?: boolean;
   } | null;
 }
 

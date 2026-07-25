@@ -14,6 +14,10 @@ export function deleteConnection(id: string): Promise<void> {
   return invoke("connection_delete", { id });
 }
 
+export function setConnectionEnabled(id: string, enabled: boolean): Promise<ProviderConnection> {
+  return invoke("connection_set_enabled", { id, enabled });
+}
+
 export function testConnection(id: string): Promise<void> {
   return invoke("connection_test", { id });
 }
