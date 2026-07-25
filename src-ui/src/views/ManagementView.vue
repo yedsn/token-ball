@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Blocks, CheckCircle2, Gauge, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
 import { useTokenBallStore } from "../store";
-import { getOrbVisible, hideWindow, showWindow } from "../services/tauri";
+import { getOrbVisible, hideWindow, readChromeCookie, showWindow } from "../services/tauri";
 import { onShowOverview } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
@@ -16,6 +16,7 @@ const settingsSection = ref<SettingsSection>("appearance");
 const orbVisible = ref(true);
 const saving = ref(false);
 const testing = ref(false);
+const readingCookie = ref(false);
 const notice = ref("");
 const customForm = reactive({ label: "", value: "" });
 const pluginForm = reactive({ id: "", name: "", version: "1.0.0", category: "provider", capability: "", permissions: "" });
@@ -240,6 +241,19 @@ async function test() {
     notice.value = String(error);
   } finally {
     testing.value = false;
+  }
+}
+
+async function fillVolcengineCookieFromChrome() {
+  readingCookie.value = true;
+  notice.value = "";
+  try {
+    form.volcengineCodingWebCookie = await readChromeCookie("console.volcengine.com");
+    notice.value = "已从 Chrome 获取火山控制台 Cookie，请保存后测试。";
+  } catch (error) {
+    notice.value = String(error);
+  } finally {
+    readingCookie.value = false;
   }
 }
 
@@ -716,6 +730,7 @@ function dateLabel(value?: string | null) {
               <label>控制台 API Host<input v-model="form.volcengineCodingWebBaseUrl" placeholder="https://console.volcengine.com/api/top" /></label>
               <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="默认 default" /></label>
               <label>控制台 Cookie<textarea v-model="form.volcengineCodingWebCookie" autocomplete="off" placeholder="从 console.volcengine.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedWebCookieLabel }}</small></label>
+              <button type="button" class="cookie-read-button" :disabled="readingCookie" @click="fillVolcengineCookieFromChrome"><RefreshCw :size="14" :class="{ spin: readingCookie }" />从 Chrome 获取 Cookie</button>
             </template>
           </template>
           <label v-else>管理 Key<input v-model="form.managementKey" type="password" autocomplete="off" /></label>

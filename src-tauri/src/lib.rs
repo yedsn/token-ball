@@ -12,7 +12,6 @@ mod windows;
 use std::sync::Arc;
 
 use app_state::AppState;
-use tauri::Manager;
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -20,32 +19,36 @@ pub fn run() {
         .without_time()
         .init();
 
+    let (app_state, initial_summary, initial_settings) = tauri::async_runtime::block_on(async {
+        let db = storage::init_database()
+            .await
+            .map_err(|error| error.to_string())?;
+        storage::repository::ensure_default_settings(&db)
+            .await
+            .map_err(|error| error.to_string())?;
+        storage::repository::ensure_default_plugins(&db)
+            .await
+            .map_err(|error| error.to_string())?;
+        let initial_summary = storage::repository::load_summary(&db, false)
+            .await
+            .unwrap_or_default();
+        let initial_settings = storage::repository::load_display_settings(&db)
+            .await
+            .unwrap_or_default();
+        Ok::<_, String>((
+            Arc::new(AppState::new(db)),
+            initial_summary,
+            initial_settings,
+        ))
+    })
+    .expect("初始化 TokenBall 状态失败");
+
     tauri::Builder::default()
+        .manage(app_state)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             crate::windows::show_window(app, "main");
         }))
-        .setup(|app| {
-            let handle = app.handle().clone();
-            let (initial_summary, initial_settings) = tauri::async_runtime::block_on(async move {
-                let db = storage::init_database()
-                    .await
-                    .map_err(|error| error.to_string())?;
-                storage::repository::ensure_default_settings(&db)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                storage::repository::ensure_default_plugins(&db)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                let initial_summary = storage::repository::load_summary(&db, false)
-                    .await
-                    .unwrap_or_default();
-                let initial_settings = storage::repository::load_display_settings(&db)
-                    .await
-                    .unwrap_or_default();
-                handle.manage(Arc::new(AppState::new(db)));
-                Ok::<_, String>((initial_summary, initial_settings))
-            })?;
-
+        .setup(move |app| {
             tray::setup_tray(app, &initial_summary, &initial_settings)?;
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -60,6 +63,7 @@ pub fn run() {
             commands::connection_delete,
             commands::connection_test,
             commands::connection_set_enabled,
+            commands::connection_read_chrome_cookie,
             commands::plugin_list,
             commands::plugin_set_enabled,
             commands::plugin_add,

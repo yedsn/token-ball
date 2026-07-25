@@ -22,6 +22,10 @@ export function testConnection(id: string): Promise<void> {
   return invoke("connection_test", { id });
 }
 
+export function readChromeCookie(hostFilter: string): Promise<string> {
+  return invoke("connection_read_chrome_cookie", { hostFilter });
+}
+
 export function getLatestQuota(): Promise<QuotaSummary> {
   return invoke("quota_get_latest");
 }
