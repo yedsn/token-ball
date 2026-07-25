@@ -11,7 +11,12 @@ const view = computed(() => params.get("view") ?? "main");
 
 onMounted(async () => {
   document.body.dataset.view = view.value;
-  await store.init();
+  try {
+    await store.init();
+  } catch (error) {
+    store.error = `应用初始化失败：${String(error)}`;
+    store.ready = true;
+  }
 });
 </script>
 

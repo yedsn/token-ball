@@ -57,10 +57,14 @@ const currentConnection = computed(() => store.connections.find((connection) => 
 const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.summary.accounts : []));
 const enabledCustomItems = computed(() => store.displaySettings.customItems.filter((item) => item.enabled));
 const groupedAccounts = computed(() => {
-  return store.connections.map((connection) => ({
-    connection,
-    accounts: store.summary.accounts.filter((account) => account.connectionId === connection.id)
-  }));
+  return providerGroups.value.map((provider) => ({
+    id: provider.id,
+    title: provider.title,
+    groups: provider.connections.map((connection) => ({
+      connection,
+      accounts: store.summary.accounts.filter((account) => account.connectionId === connection.id)
+    }))
+  })).filter((provider) => provider.groups.length > 0);
 });
 const currentConnectionAccounts = computed(() => store.summary.accounts.filter((account) => account.connectionId === form.id));
 
@@ -73,7 +77,7 @@ const pageTitle = computed(() => {
 const pageDescription = computed(() => {
   if (page.value === "orbSettings") return settingsSection.value === "plugins" ? "管理内置扩展和后续可安装插件的启停状态" : "配置流量球、悬浮面板和托盘悬停信息显示哪些内容";
   if (page.value === "instance") return "维护当前 provider 实例的连接信息";
-  return "CLIProxyAPI 额度与账号状态";
+  return "各 Provider 的模型额度与账号状态";
 });
 
 const currentProviderName = computed(() => providerLabel(form.providerType));
@@ -423,6 +427,8 @@ function dateLabel(value?: string | null) {
       <button class="nav" :class="{ active: page === 'overview' }" @click="openPage('overview')"><Gauge :size="16" />总览</button>
       <button class="nav" :class="{ active: page === 'orbSettings' }" @click="openPage('orbSettings')"><Settings2 :size="16" />设置</button>
 
+      <div v-if="store.connectionError" class="side-error">{{ store.connectionError }}</div>
+
       <div v-for="group in providerGroups" :key="group.id" class="provider-group">
         <div class="provider-title"><Wifi :size="14" />{{ group.title }}</div>
         <div class="instance-list">
@@ -475,38 +481,47 @@ function dateLabel(value?: string | null) {
           </article>
         </section>
 
+        <div v-if="store.connectionError || store.error" class="error-banner">
+          <strong>数据加载异常</strong>
+          <span v-if="store.connectionError">{{ store.connectionError }}</span>
+          <span v-if="store.error">{{ store.error }}</span>
+        </div>
+
         <section class="content-grid overview-grid">
           <section class="panel account-panel quota-board">
-            <h2>Codex 额度</h2>
+            <h2>模型额度</h2>
             <p v-if="store.hasConnection && store.summary.lowestRemainingPercent === null" class="muted quota-note">当前 CLIProxyAPI 管理接口未返回真实余量百分比，下面展示账号可用性和请求活动。</p>
             <div v-if="!store.hasConnection" class="empty-state">保存 CLIProxyAPI 连接后开始同步账号。</div>
             <div v-else-if="store.summary.accounts.length === 0" class="empty-state">已连接，点击立即刷新同步账号；如果仍为空，请查看测试返回内容。</div>
             <div v-else class="connection-groups">
-              <section v-for="group in groupedAccounts" :key="group.connection.id" class="connection-group">
-                <header>
-                  <strong>{{ group.connection.displayName }}</strong>
-                  <span>{{ group.connection.baseUrl }}</span>
-                </header>
-                <article v-for="account in group.accounts" :key="account.id" class="quota-card">
-                  <div class="quota-card-head">
-                    <div>
-                      <strong>{{ account.displayName }}</strong>
-                      <span>{{ account.planName }} · {{ account.status }}<template v-if="account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(account.subscriptionUntil)">到期 {{ dateLabel(account.subscriptionUntil) }}</em></template></span>
+              <section v-for="provider in groupedAccounts" :key="provider.id" class="provider-account-group">
+                <h3>{{ provider.title }}</h3>
+                <section v-for="group in provider.groups" :key="group.connection.id" class="connection-group">
+                  <header>
+                    <strong>{{ group.connection.displayName }}</strong>
+                    <span>{{ group.connection.baseUrl }}</span>
+                  </header>
+                  <article v-for="account in group.accounts" :key="account.id" class="quota-card">
+                    <div class="quota-card-head">
+                      <div>
+                        <strong>{{ account.displayName }}</strong>
+                        <span>{{ account.planName }} · {{ account.status }}<template v-if="account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(account.subscriptionUntil)">到期 {{ dateLabel(account.subscriptionUntil) }}</em></template></span>
+                      </div>
+                      <b>{{ quotaLabel(account) }}</b>
                     </div>
-                    <b>{{ quotaLabel(account) }}</b>
-                  </div>
-                  <div v-if="account.windows.length" class="quota-bars">
-                    <div v-for="window in account.windows" :key="window.id" class="quota-bar-row" :class="windowClass(window)">
-                      <span>{{ window.name }}</span>
-                      <div class="quota-track"><i :style="{ width: `${windowPercent(window) ?? 0}%` }"></i></div>
-                      <strong>{{ windowUsageLabel(window) }}</strong>
-                      <b>{{ windowPercentLabel(window) }}</b>
-                      <em>{{ resetLabel(window.resetAt) }}</em>
+                    <div v-if="account.windows.length" class="quota-bars">
+                      <div v-for="window in account.windows" :key="window.id" class="quota-bar-row" :class="windowClass(window)">
+                        <span>{{ window.name }}</span>
+                        <div class="quota-track"><i :style="{ width: `${windowPercent(window) ?? 0}%` }"></i></div>
+                        <strong>{{ windowUsageLabel(window) }}</strong>
+                        <b>{{ windowPercentLabel(window) }}</b>
+                        <em>{{ resetLabel(window.resetAt) }}</em>
+                      </div>
                     </div>
-                  </div>
-                  <span v-else class="muted">{{ activityLabel(account) }}</span>
-                </article>
-                <div v-if="group.accounts.length === 0" class="empty-state">该实例暂无账号数据。</div>
+                    <span v-else class="muted">{{ activityLabel(account) }}</span>
+                  </article>
+                  <div v-if="group.accounts.length === 0" class="empty-state">该实例暂无账号数据。</div>
+                </section>
               </section>
             </div>
           </section>

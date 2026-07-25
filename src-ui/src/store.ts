@@ -54,6 +54,7 @@ export const useTokenBallStore = defineStore("token-ball", {
     ready: false,
     refreshing: false,
     error: "",
+    connectionError: "",
     connections: [] as ProviderConnection[],
     plugins: [] as PluginManifest[],
     summary: emptySummary as QuotaSummary,
@@ -94,11 +95,18 @@ export const useTokenBallStore = defineStore("token-ball", {
         getDisplaySettings(),
         listPlugins(),
       ]);
-      if (connectionsR.status === "fulfilled") this.connections = connectionsR.value;
-      else this.error = `加载连接列表失败：${connectionsR.reason}`;
+      if (connectionsR.status === "fulfilled") {
+        this.connections = connectionsR.value;
+        this.connectionError = "";
+      } else {
+        this.connectionError = `加载连接列表失败：${String(connectionsR.reason)}`;
+      }
       if (summaryR.status === "fulfilled") this.summary = summaryR.value;
+      else this.error = `加载额度数据失败：${String(summaryR.reason)}`;
       if (displayR.status === "fulfilled") this.displaySettings = normalizeDisplaySettings(displayR.value);
+      else this.error = `加载显示设置失败：${String(displayR.reason)}`;
       if (pluginsR.status === "fulfilled") this.plugins = pluginsR.value;
+      else this.error = `加载插件列表失败：${String(pluginsR.reason)}`;
       this.ready = true;
       await onQuotaUpdated((summary) => (this.summary = summary));
       await onRefreshStarted(() => (this.refreshing = true));
@@ -116,8 +124,16 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async saveProviderConnection(input: ConnectionInput) {
       const connection = await saveConnection(input);
-      this.connections = await listConnections();
+      await this.loadConnections();
       return connection;
+    },
+    async loadConnections() {
+      try {
+        this.connections = await listConnections();
+        this.connectionError = "";
+      } catch (error) {
+        this.connectionError = `加载连接列表失败：${String(error)}`;
+      }
     },
     async saveCliProxyConnection(input: Omit<ConnectionInput, "providerType">) {
       return this.saveProviderConnection({ ...input, providerType: "cliProxyApi" });
@@ -130,13 +146,18 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async deleteCliProxyConnection(id: string) {
       await deleteConnection(id);
-      this.connections = await listConnections();
+      await this.loadConnections();
     },
     async toggleConnectionEnabled(id: string, enabled: boolean) {
-      const connection = await setConnectionEnabled(id, enabled);
-      this.connections = this.connections.map((item) =>
-        item.id === id ? { ...item, enabled: connection.enabled } : item
-      );
+      try {
+        const connection = await setConnectionEnabled(id, enabled);
+        this.connections = this.connections.map((item) =>
+          item.id === id ? { ...item, enabled: connection.enabled } : item
+        );
+        this.connectionError = "";
+      } catch (error) {
+        this.connectionError = `切换实例启用状态失败：${String(error)}`;
+      }
     },
     async togglePlugin(id: string, enabled: boolean) {
       this.plugins = await setPluginEnabled(id, enabled);

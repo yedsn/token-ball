@@ -104,7 +104,14 @@ pub async fn list_connections(pool: &SqlitePool) -> AppResult<Vec<ProviderConnec
     .fetch_all(pool)
     .await?;
 
-    rows.into_iter().map(row_to_connection).collect()
+    let mut connections = Vec::new();
+    for row in rows {
+        match row_to_connection(row) {
+            Ok(connection) => connections.push(connection),
+            Err(error) => tracing::warn!(error = %error, "skip invalid provider connection row"),
+        }
+    }
+    Ok(connections)
 }
 
 pub async fn get_connection(pool: &SqlitePool, id: &str) -> AppResult<ProviderConnection> {
