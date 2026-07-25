@@ -634,6 +634,15 @@ aside {
 .balance-table tr.critical b { color: #ff5a54; }
 .balance-table tr.unknown b { color: #48a6ff; }
 
+.balance-reset {
+  font-weight: 700;
+}
+
+.balance-reset.healthy { color: #19c37d; }
+.balance-reset.warning { color: #e9b949; }
+.balance-reset.critical { color: #ff5a54; }
+.balance-reset.unknown { color: #8fa19b; }
+
 .balance-table tbody tr:hover {
   background: rgba(255,255,255,0.035);
 }

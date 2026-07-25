@@ -356,6 +356,15 @@ function balanceResetLabel(row: BalanceRankingRow) {
   return resetLabel(row.window?.resetAt ?? row.account.nextResetAt);
 }
 
+function balanceResetClass(row: BalanceRankingRow) {
+  const time = balanceResetTime(row);
+  if (time === null) return "unknown";
+  const days = (time - Date.now()) / 86400000;
+  if (days <= 3) return "critical";
+  if (days <= 7) return "warning";
+  return "healthy";
+}
+
 function windowPercent(window: QuotaWindow) {
   return typeof window.remainingPercent === "number" ? Math.round(window.remainingPercent) : null;
 }
@@ -595,7 +604,7 @@ function dateLabel(value?: string | null) {
             </thead>
             <tbody>
               <tr v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" :class="balanceRowClass(row)">
-                <td>{{ balanceResetLabel(row) }}</td>
+                <td><span class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</span></td>
                 <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}</span></td>
                 <td>{{ balanceWindowName(row) }}</td>
                 <td><b>{{ balanceRemainingLabel(row) }}</b></td>
