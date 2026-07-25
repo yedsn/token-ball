@@ -9,6 +9,7 @@ import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from
 
 type MainPage = "overview" | "orbSettings" | "instance";
 type SettingsSection = "appearance" | "plugins";
+type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
 
 const store = useTokenBallStore();
 const page = ref<MainPage>("overview");
@@ -56,6 +57,18 @@ const providerGroups = computed(() => [
 const currentConnection = computed(() => store.connections.find((connection) => connection.id === form.id) ?? null);
 const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.summary.accounts : []));
 const enabledCustomItems = computed(() => store.displaySettings.customItems.filter((item) => item.enabled));
+const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
+  const rows: BalanceRankingRow[] = store.summary.accounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
+  return rows.sort((left, right) => {
+    const leftTime = balanceResetTime(left);
+    const rightTime = balanceResetTime(right);
+    if (leftTime === null && rightTime === null) return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
+    if (leftTime === null) return 1;
+    if (rightTime === null) return -1;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
+  });
+});
 const groupedAccounts = computed(() => {
   return providerGroups.value.map((provider) => ({
     id: provider.id,
@@ -266,9 +279,81 @@ function quotaLabel(account: QuotaAccount) {
   return "未知";
 }
 
-function accountPercentValue(account: QuotaAccount) {
+function accountRemainingPercent(account: QuotaAccount) {
   const window = account.windows.find((item) => item.id === account.criticalWindowId);
-  return typeof window?.remainingPercent === "number" ? window.remainingPercent : 0;
+  return typeof window?.remainingPercent === "number" ? window.remainingPercent : null;
+}
+
+function accountBalanceClass(account: QuotaAccount) {
+  const percent = accountRemainingPercent(account);
+  if (percent === null) return "unknown";
+  if (percent < 30) return "critical";
+  if (percent < 60) return "warning";
+  return "healthy";
+}
+
+function accountConnectionLabel(account: QuotaAccount) {
+  return store.connections.find((connection) => connection.id === account.connectionId)?.displayName ?? "未知实例";
+}
+
+function primaryExpiryWindow(account: QuotaAccount) {
+  return findExpiryWindow(account, "monthly")
+    ?? highestQuotaWindow(account)
+    ?? account.windows.find((window) => window.id === account.criticalWindowId && window.resetAt)
+    ?? account.windows.find((window) => window.resetAt)
+    ?? null;
+}
+
+function findExpiryWindow(account: QuotaAccount, period: "weekly" | "monthly") {
+  return account.windows.find((window) => window.resetAt && windowPeriodKey(window) === period) ?? null;
+}
+
+function windowPeriodKey(window: QuotaWindow) {
+  const value = `${window.periodType} ${window.id} ${window.name}`.toLowerCase();
+  if (value.includes("weekly") || value.includes("week") || value.includes("7d") || value.includes("每周") || value.includes("近 1 周")) return "weekly";
+  if (value.includes("monthly") || value.includes("month") || value.includes("30d") || value.includes("每月") || value.includes("近 1 月")) return "monthly";
+  return "other";
+}
+
+function highestQuotaWindow(account: QuotaAccount) {
+  return account.windows
+    .filter((window) => window.resetAt)
+    .sort((left, right) => windowPriority(right) - windowPriority(left))[0] ?? null;
+}
+
+function windowPriority(window: QuotaWindow) {
+  const period = windowPeriodKey(window);
+  if (period === "monthly") return 30 * 24 * 60 * 60;
+  if (period === "weekly") return 7 * 24 * 60 * 60;
+  if (typeof window.periodSeconds === "number") return window.periodSeconds;
+  return typeof window.total === "number" ? window.total : 0;
+}
+
+function balanceResetTime(row: BalanceRankingRow) {
+  const value = row.window?.resetAt ?? row.account.nextResetAt;
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time > 0 ? time : null;
+}
+
+function balanceRowClass(row: BalanceRankingRow) {
+  return row.window ? windowClass(row.window) : accountBalanceClass(row.account);
+}
+
+function balanceWindowName(row: BalanceRankingRow) {
+  return row.window?.name ?? "账号状态";
+}
+
+function balanceRemainingLabel(row: BalanceRankingRow) {
+  return row.window ? windowPercentLabel(row.window) : quotaLabel(row.account);
+}
+
+function balanceUsageLabel(row: BalanceRankingRow) {
+  return row.window ? windowUsageLabel(row.window) : activityLabel(row.account);
+}
+
+function balanceResetLabel(row: BalanceRankingRow) {
+  return resetLabel(row.window?.resetAt ?? row.account.nextResetAt);
 }
 
 function windowPercent(window: QuotaWindow) {
@@ -486,6 +571,40 @@ function dateLabel(value?: string | null) {
           <span v-if="store.connectionError">{{ store.connectionError }}</span>
           <span v-if="store.error">{{ store.error }}</span>
         </div>
+
+        <section class="panel balance-ranking-panel">
+          <header class="balance-ranking-head">
+            <div>
+              <h2>全账号额度到期表</h2>
+              <p>每个账号一行，有月限额看月限额，否则按最高额度周期排序</p>
+            </div>
+            <span>{{ balanceExpiryRanking.length }} 个账号</span>
+          </header>
+          <div v-if="!store.hasConnection" class="empty-state">保存实例后展示全账号额度到期表。</div>
+          <div v-else-if="balanceExpiryRanking.length === 0" class="empty-state">暂无账号额度数据，点击立即刷新同步。</div>
+          <table v-else class="balance-table">
+            <thead>
+              <tr>
+                <th>到期时间</th>
+                <th>账号</th>
+                <th>优先额度</th>
+                <th>剩余</th>
+                <th>用量</th>
+                <th>实例</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" :class="balanceRowClass(row)">
+                <td>{{ balanceResetLabel(row) }}</td>
+                <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}</span></td>
+                <td>{{ balanceWindowName(row) }}</td>
+                <td><b>{{ balanceRemainingLabel(row) }}</b></td>
+                <td>{{ balanceUsageLabel(row) }}</td>
+                <td>{{ accountConnectionLabel(row.account) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
 
         <section class="content-grid overview-grid">
           <section class="panel account-panel quota-board">
