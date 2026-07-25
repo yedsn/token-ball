@@ -101,17 +101,24 @@ export const useTokenBallStore = defineStore("token-ball", {
       } else {
         this.connectionError = `加载连接列表失败：${String(connectionsR.reason)}`;
       }
-      if (summaryR.status === "fulfilled") this.summary = summaryR.value;
+      if (summaryR.status === "fulfilled") {
+        this.summary = summaryR.value;
+        this.error = "";
+      }
       else this.error = `加载额度数据失败：${String(summaryR.reason)}`;
       if (displayR.status === "fulfilled") this.displaySettings = normalizeDisplaySettings(displayR.value);
       else this.error = `加载显示设置失败：${String(displayR.reason)}`;
       if (pluginsR.status === "fulfilled") this.plugins = pluginsR.value;
       else this.error = `加载插件列表失败：${String(pluginsR.reason)}`;
       this.ready = true;
-      await onQuotaUpdated((summary) => (this.summary = summary));
+      await onQuotaUpdated((summary) => {
+        this.summary = summary;
+        if (!summary.stale) this.error = "";
+      });
       await onRefreshStarted(() => (this.refreshing = true));
       await onRefreshCompleted((summary) => {
         this.summary = summary;
+        if (!summary.stale) this.error = "";
         this.refreshing = false;
       });
       await onProviderError((message) => {
@@ -143,6 +150,7 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async testCliProxyConnection(id: string) {
       await testConnection(id);
+      this.error = "";
     },
     async deleteCliProxyConnection(id: string) {
       await deleteConnection(id);
@@ -201,6 +209,7 @@ export const useTokenBallStore = defineStore("token-ball", {
       this.refreshing = true;
       try {
         this.summary = await refreshAllQuota();
+        if (!this.summary.stale) this.error = "";
       } finally {
         this.refreshing = false;
       }

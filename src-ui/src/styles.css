@@ -741,18 +741,6 @@ textarea {
   gap: 8px;
 }
 
-.cookie-read-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 36px;
-  margin: -4px 0 12px;
-  border-radius: 8px;
-  color: #dbe8e4;
-  background: rgba(255,255,255,0.08);
-}
-
 .primary,
 .actions button {
   display: inline-flex;

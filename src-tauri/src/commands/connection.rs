@@ -5,7 +5,7 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     error::AppResult,
-    providers::{chrome_cookie, cliproxy::CliProxyClient, volcengine::VolcengineClient},
+    providers::{cliproxy::CliProxyClient, volcengine::VolcengineClient},
     quota::{ConnectionInput, ProviderConnection, ProviderType},
     storage::repository,
 };
@@ -50,13 +50,6 @@ pub async fn connection_set_enabled(
 #[tauri::command]
 pub async fn connection_test(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     test_connection_internal(&state, &id)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-pub async fn connection_read_chrome_cookie(host_filter: String) -> Result<String, String> {
-    chrome_cookie::read_chrome_cookie_header(&host_filter)
         .await
         .map_err(Into::into)
 }

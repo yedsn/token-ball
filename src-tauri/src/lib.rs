@@ -63,7 +63,6 @@ pub fn run() {
             commands::connection_delete,
             commands::connection_test,
             commands::connection_set_enabled,
-            commands::connection_read_chrome_cookie,
             commands::plugin_list,
             commands::plugin_set_enabled,
             commands::plugin_add,
