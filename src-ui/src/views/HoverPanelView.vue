@@ -31,6 +31,14 @@ const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   });
 });
 
+const totalBalanceClass = computed(() => {
+  const percent = store.totalRemainingPercent;
+  if (typeof percent !== "number") return "unknown";
+  if (percent < 30) return "critical";
+  if (percent < 60) return "warning";
+  return "healthy";
+});
+
 function accountPercentValue(account: QuotaAccount) {
   const window = account.windows.find((item) => item.id === account.criticalWindowId);
   return typeof window?.remainingPercent === "number" ? window.remainingPercent : null;
@@ -257,52 +265,48 @@ onUnmounted(() => {
 
 <template>
   <main class="hover-panel" :class="{ visible }" @mouseenter="showDelayed" @mouseleave="hideDelayed">
-    <header class="hover-panel-head">
-      <div>
-        <p>AI 额度状态</p>
-        <strong>{{ typeof store.totalRemainingPercent === 'number' ? Math.round(store.totalRemainingPercent) + '%' : store.percentLabel }} · {{ store.summary.availableAccounts }} / {{ store.summary.totalAccounts }}</strong>
+    <header class="hover-panel-hero" :class="totalBalanceClass">
+      <div class="hero-copy">
+        <span>额度</span>
+        <strong>{{ typeof store.totalRemainingPercent === 'number' ? Math.round(store.totalRemainingPercent) + '%' : store.percentLabel }}</strong>
+        <small>{{ store.summary.availableAccounts }} / {{ store.summary.totalAccounts }} 可用账号</small>
       </div>
       <RefreshCw :size="16" :class="{ spin: store.refreshing }" />
     </header>
 
     <section v-if="!store.hasConnection" class="empty-panel">尚未配置 CLIProxyAPI</section>
     <section v-else-if="store.summary.accounts.length === 0" class="empty-panel">已连接，暂无账号数据</section>
-    <section v-else class="hover-table-wrap">
+    <section v-else class="hover-list-wrap">
       <div v-if="store.displaySettings.showTotalRemaining" class="hover-summary-line">
         <span>等效剩余</span>
         <strong>{{ store.totalEquivalentAccounts.toFixed(2) }} 账号</strong>
       </div>
-      <table class="hover-table">
-        <thead>
-          <tr>
-            <th>到期时间</th>
-            <th>账号</th>
-            <th>优先额度</th>
-            <th>剩余</th>
-            <th>5h</th>
-            <th>周</th>
-            <th>月</th>
-            <th>用量</th>
-            <th>实例</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" :class="balanceRowClass(row)">
-            <td><span class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</span></td>
-            <td>
-              <strong>{{ row.account.displayName }}</strong>
-              <span>{{ row.account.planName }} · {{ row.account.status }}</span>
-            </td>
-            <td>{{ balanceWindowName(row) }}</td>
-            <td><b>{{ balanceRemainingLabel(row) }}</b></td>
-            <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></td>
-            <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></td>
-            <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></td>
-            <td>{{ balanceUsageLabel(row) }}</td>
-            <td>{{ accountConnectionLabel(row.account) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="hover-dense-table">
+        <div class="hover-dense-head">
+          <span>账号</span>
+          <span>到期</span>
+          <span>剩余</span>
+          <span>5h</span>
+          <span>周</span>
+          <span>月</span>
+        </div>
+        <article v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" class="hover-dense-row" :class="balanceRowClass(row)">
+          <div class="hover-dense-main">
+            <strong>{{ row.account.displayName }}</strong>
+            <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b>
+            <b>{{ balanceRemainingLabel(row) }}</b>
+            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b>
+            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b>
+            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b>
+          </div>
+          <div class="hover-dense-sub">
+            <span>{{ row.account.planName }} · {{ row.account.status }}</span>
+            <span>{{ balanceWindowName(row) }}</span>
+            <span>{{ balanceUsageLabel(row) }}</span>
+            <span>{{ accountConnectionLabel(row.account) }}</span>
+          </div>
+        </article>
+      </div>
       <article v-for="item in store.displaySettings.customItems.filter((item) => item.enabled)" :key="item.id" class="account-row total-row">
         <div>
           <strong>{{ item.label || '自定义' }}</strong>

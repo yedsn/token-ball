@@ -110,7 +110,7 @@ const totalRemainingLabel = computed(() => {
 const equivalentLabel = computed(() => `${store.totalEquivalentAccounts.toFixed(2)} 账号`);
 const appIconOptions = computed(() => [
   { id: "meter" as const, label: "V3 余量仪表", description: "用于窗口、任务栏和安装包的默认程序图标" },
-  { id: "orb" as const, label: "余量球", description: "使用与桌面悬浮球一致的绿色余量球图标" },
+  { id: "orb" as const, label: "额度", description: "使用与桌面悬浮窗一致的绿色额度图标" },
   { id: "custom" as const, label: "自定义", description: "上传 PNG、JPG 或 WebP 图标", src: store.displaySettings.customAppIconDataUrl }
 ]);
 
@@ -786,7 +786,7 @@ function dateLabel(value?: string | null) {
         <aside class="settings-subnav">
           <button type="button" class="settings-subnav-item" :class="{ active: settingsSection === 'appearance' }" @click="openSettingsSection('appearance')">
             <Paintbrush :size="16" />
-            <span><b>外观</b><small>余量球、托盘图标和显示内容</small></span>
+            <span><b>外观</b><small>额度、托盘图标和显示内容</small></span>
           </button>
           <button type="button" class="settings-subnav-item" :class="{ active: settingsSection === 'plugins' }" @click="openSettingsSection('plugins')">
             <Blocks :size="16" />
@@ -798,18 +798,18 @@ function dateLabel(value?: string | null) {
           <h2>外观</h2>
 
           <div class="setting-block">
-            <div class="setting-block-title">余量球</div>
+            <div class="setting-block-title">额度</div>
             <label class="check-row">
               <input type="checkbox" :checked="orbVisible" @change="toggleOrbVisible" />
-              <span><b>显示余量球</b><small>控制桌面悬浮余量球是否显示，设置会在重启后保持</small></span>
+              <span><b>显示额度悬浮窗</b><small>控制桌面额度悬浮窗是否显示，设置会在重启后保持</small></span>
             </label>
             <label class="check-row">
               <input type="checkbox" :checked="store.displaySettings.orbAnimationEnabled" @change="toggleDisplayFlag('orbAnimationEnabled', $event)" />
-              <span><b>余量球动画</b><small>控制能量环和液面动画效果</small></span>
+              <span><b>额度动画</b><small>控制能量环和液面动画效果</small></span>
             </label>
             <label class="check-row">
               <input type="checkbox" :checked="store.displaySettings.showOrbRefreshButton" @change="toggleDisplayFlag('showOrbRefreshButton', $event)" />
-              <span><b>右下角刷新图标</b><small>控制余量球右下角刷新按钮是否显示</small></span>
+              <span><b>右下角刷新图标</b><small>控制额度悬浮窗右下角刷新按钮是否显示</small></span>
             </label>
           </div>
 
@@ -869,7 +869,7 @@ function dateLabel(value?: string | null) {
 
           <div class="setting-block">
             <div class="setting-block-title">托盘图标</div>
-            <p class="setting-hint">托盘图标保留余量球样式，会根据当前额度状态显示绿色、黄色、红色或灰色。</p>
+            <p class="setting-hint">托盘图标保留额度样式，会根据当前额度状态显示绿色、黄色、红色或灰色。</p>
             <div class="segmented-control">
               <button :class="{ active: store.displaySettings.trayIconStyle === 'orb' }" @click="store.updateTrayIconStyle('orb')">能量球</button>
               <button :class="{ active: store.displaySettings.trayIconStyle === 'minimal' }" @click="store.updateTrayIconStyle('minimal')">简洁色块</button>

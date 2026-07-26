@@ -26,8 +26,8 @@ pub fn setup_tray(
     initial_summary: &QuotaSummary,
     initial_settings: &DisplaySettings,
 ) -> tauri::Result<()> {
-    let show_orb = MenuItem::with_id(app, "show_orb", "显示余量球", true, None::<&str>)?;
-    let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏余量球", true, None::<&str>)?;
+    let show_orb = MenuItem::with_id(app, "show_orb", "显示额度", true, None::<&str>)?;
+    let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏额度", true, None::<&str>)?;
     let open_main = MenuItem::with_id(app, "open_main", "打开管理", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

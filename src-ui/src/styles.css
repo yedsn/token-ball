@@ -168,22 +168,22 @@ body,
 .hover-panel {
   width: 100%;
   height: 100%;
-  padding: 14px 14px 12px;
-  border: 1px solid rgba(232, 240, 238, 0.14);
-  border-radius: 12px;
-  background: rgba(18, 25, 23, 0.98);
-  box-shadow: 0 18px 42px rgba(0,0,0,0.34);
+  padding: 10px;
+  border: 1px solid rgba(232, 240, 238, 0.12);
+  border-radius: 10px;
+  background: rgba(16, 22, 20, 0.98);
+  box-shadow: none;
   overflow: hidden;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 10px;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
 }
 
 .hover-panel.visible {
   opacity: 1;
 }
 
-.hover-panel-head,
+.hover-panel-hero,
 .hover-panel-foot {
   display: flex;
   align-items: center;
@@ -209,7 +209,39 @@ body,
   justify-content: space-between;
 }
 
-.hover-table-wrap {
+.hover-panel-hero {
+  min-height: 88px;
+  padding: 10px 12px;
+  border: 1px solid rgba(232,240,238,0.08);
+  border-radius: 9px;
+  background: rgba(255,255,255,0.025);
+}
+
+.hero-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.hero-copy span,
+.hero-copy small {
+  color: #8fa19b;
+  font-size: 11px;
+}
+
+.hero-copy strong {
+  color: #f4fbf8;
+  font-size: 42px;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.hover-panel-hero > svg {
+  align-self: start;
+  color: #9fb2ac;
+}
+
+.hover-list-wrap {
   min-width: 0;
   display: grid;
   gap: 8px;
@@ -222,93 +254,119 @@ body,
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(255,255,255,0.04);
+  background: rgba(255,255,255,0.03);
   color: #c9d7d2;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .hover-summary-line strong {
   color: #f4fbf8;
-  font-size: 13px;
-}
-
-.hover-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
   font-size: 12px;
 }
 
-.hover-table th,
-.hover-table td {
-  padding: 8px 9px;
-  border-top: 1px solid rgba(232,240,238,0.08);
-  text-align: left;
-  vertical-align: middle;
+.hover-dense-table {
+  display: grid;
+  border: 1px solid rgba(232,240,238,0.07);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.hover-table th {
-  color: #8fa19b;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.hover-table td {
-  color: #d7e4df;
+.hover-dense-head,
+.hover-dense-main {
+  display: grid;
+  grid-template-columns: minmax(88px, 1.5fr) 70px 45px 37px 37px 37px;
+  align-items: center;
+  column-gap: 7px;
   min-width: 0;
 }
 
-.hover-table td strong,
-.hover-table td span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hover-table th:nth-child(1) { width: 104px; }
-.hover-table th:nth-child(2) { width: 20%; }
-.hover-table th:nth-child(3) { width: 96px; }
-.hover-table th:nth-child(4),
-.hover-table th:nth-child(5),
-.hover-table th:nth-child(6),
-.hover-table th:nth-child(7) { width: 48px; }
-.hover-table th:nth-child(8) { width: 116px; }
-.hover-table th:nth-child(9) { width: 15%; }
-
-.hover-table td:nth-child(2),
-.hover-table td:nth-child(3),
-.hover-table td:nth-child(8),
-.hover-table td:nth-child(9) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hover-table tbody tr.healthy b { color: #19c37d; }
-.hover-table tbody tr.warning b { color: #e9b949; }
-.hover-table tbody tr.critical b { color: #ff5a54; }
-.hover-table tbody tr.unknown b { color: #48a6ff; }
-
-.hover-table tbody tr:hover {
+.hover-dense-head {
+  min-height: 24px;
+  padding: 0 8px;
+  color: #7f928b;
   background: rgba(255,255,255,0.03);
+  font-size: 10px;
+  font-weight: 600;
 }
 
-.hover-panel-head p,
+.hover-dense-row {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px 5px;
+  border-top: 1px solid rgba(232,240,238,0.055);
+  background: rgba(255,255,255,0.012);
+  font-size: 11px;
+}
+
+.hover-dense-row::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: #48a6ff;
+}
+
+.hover-dense-row.healthy::before { background: #19c37d; }
+.hover-dense-row.warning::before { background: #e9b949; }
+.hover-dense-row.critical::before { background: #ff5a54; }
+.hover-dense-row.unknown::before { background: #48a6ff; }
+
+.hover-dense-main strong,
+.hover-dense-main b,
+.hover-dense-sub span,
+.hover-dense-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hover-dense-main strong {
+  color: #edf6f2;
+  font-size: 11px;
+}
+
+.hover-dense-main b {
+  color: #d7e4df;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.hover-dense-sub {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
+  gap: 7px;
+  min-width: 0;
+}
+
+.hover-dense-sub span {
+  color: #7f928b;
+  font-size: 10px;
+}
+
+.hover-dense-row.healthy .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row .balance-quota.healthy { color: #19c37d; }
+.hover-dense-row.warning .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row .balance-quota.warning { color: #e9b949; }
+.hover-dense-row.critical .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row .balance-quota.critical { color: #ff5a54; }
+.hover-dense-row.unknown .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row .balance-quota.unknown { color: #48a6ff; }
+
 .hover-panel-foot span {
   color: #8fa19b;
-  font-size: 12px;
-}
-
-.hover-panel-head strong {
-  color: #f1f7f4;
+  font-size: 11px;
 }
 
 .hover-panel-foot {
-  border-top: 1px solid rgba(232,240,238,0.08);
-  padding-top: 8px;
+  border-top: 1px solid rgba(232,240,238,0.06);
+  padding-top: 7px;
 }
 
 .hover-panel p,
