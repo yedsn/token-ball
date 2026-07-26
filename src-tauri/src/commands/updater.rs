@@ -40,11 +40,6 @@ pub struct DownloadProgress {
     pub percent: Option<f64>,
 }
 
-#[tauri::command]
-pub fn updater_get_version(app: AppHandle) -> String {
-    app.package_info().version.to_string()
-}
-
 /// 手动触发更新检查，成功时返回最新状态并通过 `updater://status` 通知前端。
 #[tauri::command]
 pub async fn updater_check(app: AppHandle) -> Result<UpdateInfo, String> {

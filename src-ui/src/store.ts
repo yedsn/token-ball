@@ -23,7 +23,6 @@ import {
   onConnectionsUpdated,
   addPlugin,
   deletePlugin,
-  getAppVersion,
   checkForUpdate,
   downloadAndInstallUpdate,
   restartApp,
@@ -80,7 +79,8 @@ export const useTokenBallStore = defineStore("token-ball", {
     summary: emptySummary as QuotaSummary,
     displaySettings: defaultDisplaySettings as DisplaySettings,
     updater: {
-      currentVersion: "",
+      // 由 vite 构建期从 package.json 注入，不依赖运行时 invoke。
+      currentVersion: __APP_VERSION__,
       available: false,
       version: "",
       notes: "",
@@ -131,7 +131,6 @@ export const useTokenBallStore = defineStore("token-ball", {
   },
   actions: {
     async init() {
-      void this.loadAppVersion();
       const [connectionsR, summaryR, displayR, pluginsR] = await Promise.allSettled([
         listConnections(),
         getLatestQuota(),
@@ -351,13 +350,6 @@ export const useTokenBallStore = defineStore("token-ball", {
         this.updater.downloading = false;
         this.updater.failed = true;
         this.updater.message = `下载安装失败：${String(error)}`;
-      }
-    },
-    async loadAppVersion() {
-      try {
-        this.updater.currentVersion = await getAppVersion();
-      } catch {
-        // 版本号读取失败不影响主流程
       }
     },
     restart() {

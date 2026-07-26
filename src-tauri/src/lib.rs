@@ -106,7 +106,6 @@ pub fn run() {
             commands::quota_refresh_all,
             commands::settings_get_display,
             commands::settings_save_display,
-            commands::updater_get_version,
             commands::updater_check,
             commands::updater_download_and_install,
             commands::updater_restart,

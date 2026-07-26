@@ -102,10 +102,6 @@ export function getOrbVisible(): Promise<boolean> {
   return invoke("orb_get_visible");
 }
 
-export function getAppVersion(): Promise<string> {
-  return invoke("updater_get_version");
-}
-
 export interface UpdateInfo {
   currentVersion: string;
   available: boolean;

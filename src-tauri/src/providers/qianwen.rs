@@ -297,7 +297,10 @@ fn personal_usage_account(
     ) {
         windows.push(window);
     }
-    if let Some(window) = percent_window_remaining(
+    // per1WeekPercentage is a used percent (0.0 = full, 100.0 = exhausted),
+    // identical in semantics to per5HourPercentage; the weekly reset time is
+    // no longer returned by the current API and is left null when absent.
+    if let Some(window) = percent_window(
         "qianwen-personal-weekly",
         "每周",
         PeriodType::Weekly,
@@ -348,32 +351,6 @@ fn percent_window(
         period_seconds,
         total: Some(100.0),
         used: Some(used.clamp(0.0, 100.0)),
-        remaining: Some(remaining),
-        remaining_percent: Some(remaining),
-        unit: QuotaUnit::Percent,
-        reset_at,
-        is_active: true,
-        is_current_constraint: true,
-        data_source: "qianwen:sfm_bailian/BroadScopeAspnGateway/tokenplan-personal-usage".to_string(),
-    })
-}
-
-fn percent_window_remaining(
-    id: &str,
-    name: &str,
-    period_type: PeriodType,
-    period_seconds: Option<i64>,
-    remaining_percent: Option<f64>,
-    reset_at: Option<DateTime<Utc>>,
-) -> Option<QuotaWindow> {
-    let remaining = remaining_percent?.clamp(0.0, 100.0);
-    Some(QuotaWindow {
-        id: id.to_string(),
-        name: name.to_string(),
-        period_type,
-        period_seconds,
-        total: Some(100.0),
-        used: Some((100.0 - remaining).clamp(0.0, 100.0)),
         remaining: Some(remaining),
         remaining_percent: Some(remaining),
         unit: QuotaUnit::Percent,
@@ -695,7 +672,36 @@ mod tests {
         assert_eq!(accounts[0].external_id, "qianwen-token-plan-personal");
         assert_eq!(accounts[0].windows.len(), 2);
         assert_eq!(accounts[0].windows[0].remaining_percent, Some(100.0));
-        assert_eq!(accounts[0].windows[1].remaining_percent, Some(1.0));
+        // per1WeekPercentage is a used percent: 1.0 used -> 99.0 remaining.
+        assert_eq!(accounts[0].windows[1].remaining_percent, Some(99.0));
         assert!(accounts[0].windows[1].reset_at.is_some());
+    }
+
+    #[test]
+    fn maps_personal_usage_full_quota() {
+        // Real response when the Token Plan quota is completely unused/full:
+        // both windows report 0.0 used percent, and the weekly reset time is
+        // no longer returned by the current API.
+        let usage: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "per5HourPercentage": 0.0,
+                    "per1WeekPercentage": 0.0
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let accounts = build_accounts("conn", "token-plan", &usage, None, None);
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].windows.len(), 2);
+        assert_eq!(accounts[0].windows[0].remaining_percent, Some(100.0));
+        assert_eq!(accounts[0].windows[1].remaining_percent, Some(100.0));
+        assert!(accounts[0].windows[1].reset_at.is_none());
     }
 }

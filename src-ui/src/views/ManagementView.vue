@@ -464,7 +464,7 @@ function quotaLabel(account: QuotaAccount) {
   if (typeof window?.remainingPercent === "number") return `${Math.round(window.remainingPercent)}%`;
   const usageWindow = account.windows.find((item) => typeof item.used === "number");
   if (usageWindow) return formatWindowUsed(usageWindow);
-  return "未知";
+  return "--";
 }
 
 function accountRemainingPercent(account: QuotaAccount) {
@@ -764,14 +764,13 @@ function resetLabel(value?: string | null) {
 }
 
 function activityLabel(account: QuotaAccount) {
-  if (account.externalId.startsWith("qianwen-token-plan") && account.windows.length === 0) return "千问控制台 API 已连通，但未返回 Token Plan 额度。";
-  if (account.externalId.startsWith("volcengine-coding-plan") && account.windows.length === 0) return "未返回 Coding Plan 用量明细。";
+  if (account.windows.length === 0) return "--";
   const latest = account.recentRequests?.[account.recentRequests.length - 1];
   if (latest) return `${latest.time} 成功 ${latest.success} / 失败 ${latest.failed}`;
   const success = account.successCount ?? 0;
   const failed = account.failedCount ?? 0;
   if (success || failed) return `累计成功 ${success} / 失败 ${failed}`;
-  return "CLIProxyAPI 未返回余量，仅可显示账号状态";
+  return "--";
 }
 
 function dateLabel(value?: string | null) {
@@ -924,7 +923,6 @@ async function startTitlebarDrag(event: PointerEvent) {
         <section class="content-grid overview-grid">
           <section class="panel account-panel quota-board">
             <h2>模型额度</h2>
-            <p v-if="store.hasConnection && store.summary.lowestRemainingPercent === null" class="muted quota-note">当前 CLIProxyAPI 管理接口未返回真实余量百分比，下面展示账号可用性和请求活动。</p>
             <div v-if="!store.hasConnection" class="empty-state">保存 CLIProxyAPI 连接后开始同步账号。</div>
             <div v-else-if="store.enabledAccounts.length === 0" class="empty-state">暂无启用实例账号数据；如需展示，请先启用对应实例。</div>
             <div v-else class="connection-groups">
