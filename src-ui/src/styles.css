@@ -1169,6 +1169,114 @@ body,
   background: #19c37d;
 }
 
+.about-panel {
+  align-self: start;
+  display: grid;
+  gap: 12px;
+}
+
+.about-version {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid rgba(232,240,238,0.09);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+
+.about-version svg {
+  color: #48a6ff;
+}
+
+.about-version div {
+  display: grid;
+  gap: 5px;
+}
+
+.about-version span {
+  color: #8fa19b;
+  font-size: 12px;
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.about-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 8px;
+  color: #eaf3f0;
+  background: rgba(255,255,255,0.08);
+}
+
+.about-actions button.primary {
+  color: #06110d;
+  background: #19c37d;
+}
+
+.about-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.update-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.update-progress .quota-track {
+  height: 8px;
+}
+
+.update-progress .quota-track i {
+  background: #48a6ff;
+  transition: width 0.2s ease;
+}
+
+.update-progress span {
+  color: #8fa19b;
+  font-size: 12px;
+}
+
+.update-notes {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(232,240,238,0.09);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+
+.update-notes strong {
+  font-size: 13px;
+}
+
+.update-notes pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #aac0b8;
+}
+
+.notice.error {
+  color: #ff8b85;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
 .panel {
   padding: 18px;
 }

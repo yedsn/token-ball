@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Blocks, CheckCircle2, Database, Download, Gauge, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
+import { Blocks, CheckCircle2, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -10,7 +10,7 @@ import { onShowOverview } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
-type SettingsSection = "appearance" | "plugins" | "backup";
+type SettingsSection = "appearance" | "plugins" | "backup" | "about";
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
 type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
@@ -103,7 +103,11 @@ const pageTitle = computed(() => {
 });
 
 const pageDescription = computed(() => {
-  if (page.value === "orbSettings") return settingsSection.value === "plugins" ? "管理内置扩展和后续可安装插件的启停状态" : "配置流量球、悬浮面板和托盘悬停信息显示哪些内容";
+  if (page.value === "orbSettings") {
+    if (settingsSection.value === "plugins") return "管理内置扩展和后续可安装插件的启停状态";
+    if (settingsSection.value === "about") return "查看版本号并检查、下载、安装应用更新";
+    return "配置流量球、悬浮面板和托盘悬停信息显示哪些内容";
+  }
   if (page.value === "instance") return "维护当前 provider 实例的连接信息";
   return "各 Provider 的模型额度与账号状态";
 });
@@ -111,7 +115,8 @@ const pageDescription = computed(() => {
 const settingsSectionOptions = computed(() => [
   { id: "appearance" as const, title: "外观", description: "额度、托盘图标和显示内容", icon: Paintbrush },
   { id: "plugins" as const, title: "插件", description: "安装、启停和删除扩展", icon: Blocks },
-  { id: "backup" as const, title: "备份", description: "导出或导入实例配置", icon: Database }
+  { id: "backup" as const, title: "备份", description: "导出或导入实例配置", icon: Database },
+  { id: "about" as const, title: "关于", description: "版本与更新检查", icon: Info }
 ]);
 
 const currentProviderName = computed(() => providerLabel(form.providerType));
@@ -1178,6 +1183,37 @@ async function startTitlebarDrag(event: PointerEvent) {
           </div>
           <p class="setting-hint">导出配置会打开另存为窗口，可以指定保存位置和文件名；导入配置会选择一个已有 JSON 文件并覆盖当前实例配置。备份文件含敏感密钥，请只保存在可信位置。</p>
           <p v-if="notice" class="notice">{{ notice }}</p>
+        </section>
+        <section v-if="settingsSection === 'about'" class="panel about-panel">
+          <h2>关于 TokenBall</h2>
+          <div class="about-version">
+            <Info :size="18" />
+            <div>
+              <strong>TokenBall</strong>
+              <span>当前版本 v{{ store.updater.currentVersion || '—' }}</span>
+            </div>
+          </div>
+          <div class="about-actions">
+            <button class="primary" type="button" :disabled="store.updater.checking || store.updater.downloading" @click="store.checkForUpdates()">
+              <RefreshCw :size="16" :class="{ spinning: store.updater.checking }" />检查更新
+            </button>
+            <button v-if="store.updater.available && !store.updater.downloading && !store.updater.installed" class="primary" type="button" @click="store.downloadAndInstall()">
+              <Download :size="16" />下载并安装 v{{ store.updater.version }}
+            </button>
+            <button v-if="store.updater.installed" type="button" @click="store.restart()">
+              <RefreshCw :size="16" />重启应用
+            </button>
+          </div>
+          <div v-if="store.updater.downloading" class="update-progress">
+            <div class="quota-track"><i :style="{ width: `${store.updater.percent ?? 0}%` }"></i></div>
+            <span>{{ store.updater.percent != null ? `${Math.round(store.updater.percent)}%` : '下载中…' }}</span>
+          </div>
+          <p v-if="store.updater.message" class="notice" :class="{ error: store.updater.failed }">{{ store.updater.message }}</p>
+          <article v-if="store.updater.available && store.updater.notes && !store.updater.downloading" class="update-notes">
+            <strong>更新说明</strong>
+            <pre>{{ store.updater.notes }}</pre>
+          </article>
+          <p class="setting-hint">应用启动后会在后台自动检查更新；发现新版本时可在此手动下载安装，安装完成后会自动重启。</p>
         </section>
       </section>
 

@@ -102,6 +102,36 @@ export function getOrbVisible(): Promise<boolean> {
   return invoke("orb_get_visible");
 }
 
+export function getAppVersion(): Promise<string> {
+  return invoke("updater_get_version");
+}
+
+export interface UpdateInfo {
+  currentVersion: string;
+  available: boolean;
+  version?: string;
+  date?: string;
+  notes?: string;
+}
+
+export interface DownloadProgress {
+  downloaded: number;
+  total?: number;
+  percent?: number;
+}
+
+export function checkForUpdate(): Promise<UpdateInfo> {
+  return invoke("updater_check");
+}
+
+export function downloadAndInstallUpdate(): Promise<void> {
+  return invoke("updater_download_and_install");
+}
+
+export function restartApp(): Promise<void> {
+  return invoke("updater_restart");
+}
+
 export function onQuotaUpdated(callback: (summary: QuotaSummary) => void) {
   return listen<QuotaSummary>("quota://updated", (event) => callback(event.payload));
 }
@@ -128,4 +158,28 @@ export function onConnectionsUpdated(callback: (connections: ProviderConnection[
 
 export function onShowOverview(callback: () => void) {
   return listen("main://show-overview", () => callback());
+}
+
+export function onUpdaterStatus(callback: (info: UpdateInfo) => void) {
+  return listen<UpdateInfo>("updater://status", (event) => callback(event.payload));
+}
+
+export function onUpdaterDownloadStarted(callback: () => void) {
+  return listen("updater://download-started", () => callback());
+}
+
+export function onUpdaterDownloadProgress(callback: (progress: DownloadProgress) => void) {
+  return listen<DownloadProgress>("updater://download-progress", (event) => callback(event.payload));
+}
+
+export function onUpdaterDownloadFinished(callback: () => void) {
+  return listen("updater://download-finished", () => callback());
+}
+
+export function onUpdaterInstalled(callback: () => void) {
+  return listen("updater://installed", () => callback());
+}
+
+export function onUpdaterFailed(callback: (message: string) => void) {
+  return listen<string>("updater://failed", (event) => callback(event.payload));
 }

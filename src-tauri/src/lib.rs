@@ -69,6 +69,12 @@ pub fn run() {
                 tray::apply_orb_visibility(&app_handle).await;
             });
             scheduler::start_quota_scheduler(app.handle().clone());
+            // 启动后静默检查更新，前端通过 updater://status 事件接收结果。
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                commands::updater::run_startup_check(app_handle).await;
+            });
 
             if let Some(main_window) = app.get_webview_window("main") {
                 let app_handle = app.handle().clone();
@@ -100,6 +106,10 @@ pub fn run() {
             commands::quota_refresh_all,
             commands::settings_get_display,
             commands::settings_save_display,
+            commands::updater_get_version,
+            commands::updater_check,
+            commands::updater_download_and_install,
+            commands::updater_restart,
             commands::window_show,
             commands::window_hide,
             commands::window_open_main_overview,

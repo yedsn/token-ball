@@ -1,12 +1,20 @@
 import { defineStore } from "pinia";
 import type { ConnectionInput, DisplaySettings, PluginManifest, ProviderConnection, QuotaAccount, QuotaSummary } from "./types";
 import {
+  type DownloadProgress,
+  type UpdateInfo,
   exportConnectionConfigToFile,
   getDisplaySettings,
   getLatestQuota,
   importConnectionConfig,
   importConnectionConfigFromFile,
   listConnections,
+  onUpdaterDownloadFinished,
+  onUpdaterDownloadProgress,
+  onUpdaterDownloadStarted,
+  onUpdaterFailed,
+  onUpdaterInstalled,
+  onUpdaterStatus,
   onProviderError,
   onQuotaUpdated,
   onRefreshCompleted,
@@ -15,6 +23,10 @@ import {
   onConnectionsUpdated,
   addPlugin,
   deletePlugin,
+  getAppVersion,
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  restartApp,
   setAppIconStyle,
   refreshAllQuota,
   readConnectionConfigBackup,
@@ -24,7 +36,7 @@ import {
   listPlugins,
   setPluginEnabled,
   testConnection,
-  deleteConnection
+ deleteConnection
 } from "./services/tauri";
 
 const emptySummary: QuotaSummary = {
@@ -66,7 +78,22 @@ export const useTokenBallStore = defineStore("token-ball", {
     connections: [] as ProviderConnection[],
     plugins: [] as PluginManifest[],
     summary: emptySummary as QuotaSummary,
-    displaySettings: defaultDisplaySettings as DisplaySettings
+    displaySettings: defaultDisplaySettings as DisplaySettings,
+    updater: {
+      currentVersion: "",
+      available: false,
+      version: "",
+      notes: "",
+      date: "",
+      checking: false,
+      downloading: false,
+      downloaded: 0,
+      total: null as number | null,
+      percent: null as number | null,
+      installed: false,
+      failed: false,
+      message: ""
+    }
   }),
   getters: {
     hasConnection: (state) => state.connections.length > 0,
@@ -104,6 +131,7 @@ export const useTokenBallStore = defineStore("token-ball", {
   },
   actions: {
     async init() {
+      void this.loadAppVersion();
       const [connectionsR, summaryR, displayR, pluginsR] = await Promise.allSettled([
         listConnections(),
         getLatestQuota(),
@@ -146,6 +174,36 @@ export const useTokenBallStore = defineStore("token-ball", {
       await onConnectionsUpdated((connections) => {
         this.connections = connections;
         this.connectionError = "";
+      });
+      await onUpdaterStatus((info) => this.applyUpdaterStatus(info));
+      await onUpdaterDownloadStarted(() => {
+        this.updater.downloading = true;
+        this.updater.downloaded = 0;
+        this.updater.total = null;
+        this.updater.percent = null;
+        this.updater.installed = false;
+        this.updater.failed = false;
+        this.updater.message = "正在下载更新…";
+      });
+      await onUpdaterDownloadProgress((progress) => {
+        this.updater.downloaded = progress.downloaded;
+        this.updater.total = progress.total ?? null;
+        this.updater.percent = progress.percent ?? null;
+      });
+      await onUpdaterDownloadFinished(() => {
+        this.updater.percent = 100;
+        this.updater.message = "下载完成，正在安装…";
+      });
+      await onUpdaterInstalled(() => {
+        this.updater.downloading = false;
+        this.updater.installed = true;
+        this.updater.message = "安装完成，正在重启…";
+      });
+      await onUpdaterFailed((message) => {
+        this.updater.downloading = false;
+        this.updater.checking = false;
+        this.updater.failed = true;
+        this.updater.message = message;
       });
     },
     async saveProviderConnection(input: ConnectionInput) {
@@ -256,6 +314,54 @@ export const useTokenBallStore = defineStore("token-ball", {
       } finally {
         this.refreshing = false;
       }
+    },
+    applyUpdaterStatus(info: UpdateInfo) {
+      this.updater.currentVersion = info.currentVersion;
+      this.updater.available = info.available;
+      this.updater.version = info.version ?? "";
+      this.updater.notes = info.notes ?? "";
+      this.updater.date = info.date ?? "";
+      this.updater.checking = false;
+      this.updater.failed = false;
+      this.updater.message = info.available
+        ? `发现新版本 ${info.version}`
+        : "当前已是最新版本";
+    },
+    async checkForUpdates() {
+      this.updater.checking = true;
+      this.updater.failed = false;
+      this.updater.message = "正在检查更新…";
+      try {
+        const info = await checkForUpdate();
+        this.applyUpdaterStatus(info);
+      } catch (error) {
+        this.updater.failed = true;
+        this.updater.message = `检查更新失败：${String(error)}`;
+      } finally {
+        this.updater.checking = false;
+      }
+    },
+    async downloadAndInstall() {
+      this.updater.failed = false;
+      this.updater.installed = false;
+      this.updater.message = "正在下载更新…";
+      try {
+        await downloadAndInstallUpdate();
+      } catch (error) {
+        this.updater.downloading = false;
+        this.updater.failed = true;
+        this.updater.message = `下载安装失败：${String(error)}`;
+      }
+    },
+    async loadAppVersion() {
+      try {
+        this.updater.currentVersion = await getAppVersion();
+      } catch {
+        // 版本号读取失败不影响主流程
+      }
+    },
+    restart() {
+      void restartApp();
     }
   }
 });
