@@ -13,6 +13,7 @@ type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 const store = useTokenBallStore();
 const visible = ref(false);
 const pointerInsidePanel = ref(false);
+const denseTableRef = ref<HTMLElement | null>(null);
 let leaveTimer: number | undefined;
 let unlistenOrbEnter: UnlistenFn | undefined;
 let unlistenOrbLeave: UnlistenFn | undefined;
@@ -218,6 +219,13 @@ function showDelayed() {
 function showFromOrb() {
   visible.value = true;
   if (leaveTimer) window.clearTimeout(leaveTimer);
+  resetListScroll();
+}
+
+function resetListScroll() {
+  window.requestAnimationFrame(() => {
+    if (denseTableRef.value) denseTableRef.value.scrollTop = 0;
+  });
 }
 
 function hideDelayed() {
@@ -281,7 +289,7 @@ onUnmounted(() => {
         <span>等效剩余</span>
         <strong>{{ store.totalEquivalentAccounts.toFixed(2) }} 账号</strong>
       </div>
-      <div class="hover-dense-table">
+      <div ref="denseTableRef" class="hover-dense-table">
         <article v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" class="hover-dense-row" :class="balanceRowClass(row)">
           <div class="hover-dense-main">
             <div class="dense-account-title">

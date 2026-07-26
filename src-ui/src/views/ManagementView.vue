@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Blocks, CheckCircle2, Gauge, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi } from "lucide-vue-next";
+import { Blocks, CheckCircle2, Gauge, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
-import { getOrbVisible, hideWindow, showWindow } from "../services/tauri";
+import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWindow, toggleMainWindowMaximize } from "../services/tauri";
 import { onShowOverview } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
@@ -594,10 +595,26 @@ function dateLabel(value?: string | null) {
   if (!value) return "";
   return new Date(value).toLocaleDateString("zh-CN");
 }
+
+async function startTitlebarDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
+  await getCurrentWindow().startDragging();
+}
 </script>
 
 <template>
   <main class="management-shell">
+    <header class="app-titlebar">
+      <div class="app-titlebar-drag" @pointerdown="startTitlebarDrag">
+        <span class="titlebar-dot"></span>
+        <strong>TokenBall</strong>
+      </div>
+      <div class="titlebar-controls">
+        <button type="button" title="最小化" @click="minimizeMainWindow"><Minus :size="14" /></button>
+        <button type="button" title="最大化" @click="toggleMainWindowMaximize"><Maximize2 :size="13" /></button>
+        <button type="button" class="close" title="关闭" @click="closeMainWindow"><X :size="14" /></button>
+      </div>
+    </header>
     <aside>
       <div class="brand-mark" aria-label="TokenBall">
         <img v-if="store.displaySettings.appIconStyle === 'custom' && store.displaySettings.customAppIconDataUrl" :src="store.displaySettings.customAppIconDataUrl" alt="" />

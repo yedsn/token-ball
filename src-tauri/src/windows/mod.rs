@@ -1,6 +1,22 @@
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use std::sync::Arc;
 
-use crate::events;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+
+use crate::{app_state::AppState, events, storage::repository};
+
+pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MainWindowState {
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub maximized: bool,
+    pub fullscreen: bool,
+}
 
 pub fn show_window(app: &AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
@@ -23,8 +39,72 @@ pub fn show_window(app: &AppHandle, label: &str) {
                 }
             }
         }
+        if label == "main" {
+            restore_main_window_state(app, &window);
+        }
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+pub fn handle_main_close(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        save_main_window_state(app, &window);
+        let _ = window.hide();
+    }
+}
+
+pub fn save_main_window_state(app: &AppHandle, window: &WebviewWindow) {
+    let Some(saved) = main_window_state(window) else { return; };
+    let Ok(value) = serde_json::to_string(&saved) else { return; };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<Arc<AppState>>();
+        if let Ok(mut cached) = state.main_window_state.write() {
+            *cached = Some(saved);
+        }
+        let _ = repository::set_setting(&state.db, MAIN_WINDOW_STATE_KEY, &value).await;
+    });
+}
+
+pub fn main_window_state_json(window: &WebviewWindow) -> Option<String> {
+    serde_json::to_string(&main_window_state(window)?).ok()
+}
+
+pub fn parse_main_window_state(value: &str) -> Option<MainWindowState> {
+    serde_json::from_str::<MainWindowState>(value).ok()
+}
+
+fn main_window_state(window: &WebviewWindow) -> Option<MainWindowState> {
+    let size = window.outer_size().ok()?;
+    let position = window.outer_position().ok()?;
+    Some(MainWindowState {
+        width: size.width,
+        height: size.height,
+        x: position.x,
+        y: position.y,
+        maximized: window.is_maximized().unwrap_or(false),
+        fullscreen: window.is_fullscreen().unwrap_or(false),
+    })
+}
+
+fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
+    let state = app.state::<Arc<AppState>>();
+    let saved = state
+        .main_window_state
+        .read()
+        .ok()
+        .and_then(|saved| saved.clone());
+    let Some(saved) = saved else { return; };
+    let _ = window.unmaximize();
+    let _ = window.set_fullscreen(false);
+    let _ = window.set_size(tauri::PhysicalSize::new(saved.width, saved.height));
+    let _ = window.set_position(PhysicalPosition::new(saved.x, saved.y));
+    if saved.maximized {
+        let _ = window.maximize();
+    }
+    if saved.fullscreen {
+        let _ = window.set_fullscreen(true);
     }
 }
 
@@ -42,6 +122,7 @@ pub fn show_hover_at(app: &AppHandle, anchor: PhysicalPosition<i32>) {
             let _ = window.set_position(position);
             let _ = window.show();
             let _ = window.set_focus();
+            let _ = window.emit("hover://orb-enter", ());
         }
     }
 }

@@ -438,6 +438,10 @@ pub async fn get_bool_setting(pool: &SqlitePool, key: &str, default: bool) -> Ap
 }
 
 pub async fn set_bool_setting(pool: &SqlitePool, key: &str, value: bool) -> AppResult<()> {
+    set_setting(pool, key, &value.to_string()).await
+}
+
+pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> AppResult<()> {
     sqlx::query(
         r#"
         INSERT INTO settings (key, value, updated_at)
@@ -448,7 +452,7 @@ pub async fn set_bool_setting(pool: &SqlitePool, key: &str, value: bool) -> AppR
         "#,
     )
     .bind(key)
-    .bind(value.to_string())
+    .bind(value)
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await?;

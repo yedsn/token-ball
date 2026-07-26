@@ -13,6 +13,7 @@ mod windows;
 use std::sync::Arc;
 
 use app_state::AppState;
+use tauri::{Manager, WindowEvent};
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -36,8 +37,13 @@ pub fn run() {
         let initial_settings = storage::repository::load_display_settings(&db)
             .await
             .unwrap_or_default();
+        let main_window_state = storage::repository::get_setting(&db, windows::MAIN_WINDOW_STATE_KEY)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|value| windows::parse_main_window_state(&value));
         Ok::<_, String>((
-            Arc::new(AppState::new(db)),
+            Arc::new(AppState::new(db, main_window_state)),
             initial_summary,
             initial_settings,
         ))
@@ -61,6 +67,16 @@ pub fn run() {
                 tray::apply_orb_visibility(&app_handle).await;
             });
             scheduler::start_quota_scheduler(app.handle().clone());
+
+            if let Some(main_window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                main_window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        crate::windows::handle_main_close(&app_handle);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -81,6 +97,9 @@ pub fn run() {
             commands::window_show,
             commands::window_hide,
             commands::window_open_main_overview,
+            commands::window_minimize_main,
+            commands::window_toggle_main_maximize,
+            commands::window_close_main,
             commands::orb_get_visible
         ])
         .run(tauri::generate_context!())

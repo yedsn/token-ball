@@ -53,7 +53,19 @@ pub fn setup_tray(
                     let _ = commands::quota::refresh_all_internal(&app_handle, &state).await;
                 });
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                let value = app
+                    .get_webview_window("main")
+                    .and_then(|window| windows::main_window_state_json(&window));
+                let app_handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(value) = value {
+                        let state = app_handle.state::<Arc<AppState>>();
+                        let _ = repository::set_setting(&state.db, "window.main.state", &value).await;
+                    }
+                    app_handle.exit(0);
+                });
+            }
             _ => {}
         })
         .on_tray_icon_event(move |tray, event| match event {

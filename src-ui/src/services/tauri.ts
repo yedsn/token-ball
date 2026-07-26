@@ -70,6 +70,18 @@ export function openMainOverview(): Promise<void> {
   return invoke("window_open_main_overview");
 }
 
+export function minimizeMainWindow(): Promise<void> {
+  return invoke("window_minimize_main");
+}
+
+export function toggleMainWindowMaximize(): Promise<void> {
+  return invoke("window_toggle_main_maximize");
+}
+
+export function closeMainWindow(): Promise<void> {
+  return invoke("window_close_main");
+}
+
 export function getOrbVisible(): Promise<boolean> {
   return invoke("orb_get_visible");
 }
