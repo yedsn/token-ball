@@ -207,7 +207,14 @@ def main() -> None:
         github_url = f"https://api.github.com/repos/{args.github_owner}/{args.github_repo}/releases/tags/{args.tag}"
     else:
         github_url = f"https://api.github.com/repos/{args.github_owner}/{args.github_repo}/releases/latest"
-    github_release = request_json("GET", github_url, headers={"User-Agent": "tokenball-release-sync"})
+    github_token = os.environ.get("GITHUB_TOKEN", "").strip() or os.environ.get("GH_TOKEN", "").strip()
+    github_headers = {"User-Agent": "tokenball-release-sync"}
+    if github_token:
+        github_headers["Authorization"] = f"Bearer {github_token}"
+        log("[sync-gitee] Using authenticated GitHub API requests")
+    else:
+        log("[sync-gitee] No GitHub token found; falling back to unauthenticated API (rate-limited)")
+    github_release = request_json("GET", github_url, headers=github_headers)
     tag_name = github_release.get("tag_name")
     assets = github_release.get("assets") or []
     if not tag_name or not assets:
