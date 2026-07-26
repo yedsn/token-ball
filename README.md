@@ -163,4 +163,4 @@ TokenBall 仍处于早期版本，接口和数据模型会继续随 Provider 实
 
 ## License
 
-当前仓库尚未声明许可证。如需分发或复用代码，请先补充 License 文件。
+本项目基于 [MIT License](LICENSE) 开源。

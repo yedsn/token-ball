@@ -3,6 +3,7 @@ name = "token-ball"
 version = "0.1.1"
 description = "TokenBall desktop quota orb"
 authors = ["TokenBall"]
+license = "MIT"
 edition = "2021"
 
 [lib]
