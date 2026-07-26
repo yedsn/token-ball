@@ -160,6 +160,10 @@ export function onShowOverview(callback: () => void) {
   return listen("main://show-overview", () => callback());
 }
 
+export function onShowUpdate(callback: () => void) {
+  return listen("main://show-update", () => callback());
+}
+
 export function onUpdaterStatus(callback: (info: UpdateInfo) => void) {
   return listen<UpdateInfo>("updater://status", (event) => callback(event.payload));
 }

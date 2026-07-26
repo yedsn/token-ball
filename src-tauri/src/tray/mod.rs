@@ -26,8 +26,9 @@ pub fn setup_tray(
     let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏额度", true, None::<&str>)?;
     let open_main = MenuItem::with_id(app, "open_main", "打开管理", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
+    let check_update = MenuItem::with_id(app, "check_update", "检查更新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_orb, &hide_orb, &open_main, &refresh, &quit])?;
+    let menu = Menu::with_items(app, &[&show_orb, &hide_orb, &open_main, &refresh, &check_update, &quit])?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
@@ -41,6 +42,7 @@ pub fn setup_tray(
                 set_orb_visible(app, false);
             }
             "open_main" => windows::open_main_overview(app),
+            "check_update" => windows::open_main_update(app),
             "refresh" => {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {

@@ -5,8 +5,7 @@ import { Power } from "lucide-vue-next";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
-import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWindow, toggleMainWindowMaximize } from "../services/tauri";
-import { onShowOverview } from "../services/tauri";
+import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWindow, toggleMainWindowMaximize, onShowOverview, onShowUpdate } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
@@ -159,6 +158,12 @@ watch(
 
 onMounted(async () => {
   await onShowOverview(() => openPage("overview"));
+  await onShowUpdate(() => {
+    page.value = "orbSettings";
+    settingsSection.value = "about";
+    notice.value = "";
+    void store.checkForUpdates();
+  });
 });
 
 function openPage(target: MainPage) {

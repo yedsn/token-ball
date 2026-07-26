@@ -26,6 +26,10 @@ pub fn emit_show_overview(app: &AppHandle) {
     let _ = app.emit("main://show-overview", ());
 }
 
+pub fn emit_show_update(app: &AppHandle) {
+    let _ = app.emit("main://show-update", ());
+}
+
 pub fn emit_connections_updated(app: &AppHandle, connections: &[ProviderConnection]) {
     let _ = app.emit("connection://updated", connections);
 }

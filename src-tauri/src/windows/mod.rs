@@ -183,3 +183,15 @@ pub fn open_main_overview(app: &AppHandle) {
         events::emit_show_overview(&app_handle);
     });
 }
+
+/// 打开主窗口并跳转到「关于/检查更新」面板，供托盘菜单调用。
+pub fn open_main_update(app: &AppHandle) {
+    hide_window(app, "hover");
+    show_window(app, "main");
+    events::emit_show_update(app);
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        events::emit_show_update(&app_handle);
+    });
+}
