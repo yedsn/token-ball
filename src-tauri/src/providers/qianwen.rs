@@ -64,12 +64,16 @@ impl QianwenClient {
 
     pub async fn account_snapshot(&self, connection_id: &str) -> AppResult<Vec<QuotaAccount>> {
         let usage = self.get_personal_usage().await?;
+        let personal_subscription = self.get_personal_subscription().await.ok();
+        let quota_config = self.get_personal_quota_config().await.ok();
         let summary = self.get_seat_subscription_summary().await.ok();
         let detail = self.get_subscription_detail().await.ok();
         Ok(build_accounts(
             connection_id,
             &self.config.qianwen_product_code,
             &usage,
+            personal_subscription.as_ref(),
+            quota_config.as_ref(),
             summary.as_ref(),
             detail.as_ref(),
         ))
@@ -81,6 +85,38 @@ impl QianwenClient {
             "BroadScopeAspnGateway",
             serde_json::json!({
                 "Api": "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
+                "Data": {
+                    "cornerstoneParam": {
+                        "domain": "platform.qianwenai.com",
+                        "consoleSite": "QIANWENAI",
+                        "console": "ONE_CONSOLE",
+                        "xsp_lang": "zh-CN",
+                        "protocol": "V2",
+                        "productCode": "p_efm"
+                    }
+                },
+                "V": "1.0"
+            }),
+        )
+        .await
+    }
+
+    async fn get_personal_subscription(&self) -> AppResult<Value> {
+        self.call_token_plan_api("zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/subscription")
+            .await
+    }
+
+    async fn get_personal_quota_config(&self) -> AppResult<Value> {
+        self.call_token_plan_api("zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/quota-config")
+            .await
+    }
+
+    async fn call_token_plan_api(&self, api: &str) -> AppResult<Value> {
+        self.call_open_api(
+            "sfm_bailian",
+            "BroadScopeAspnGateway",
+            serde_json::json!({
+                "Api": api,
                 "Data": {
                     "cornerstoneParam": {
                         "domain": "platform.qianwenai.com",
@@ -127,12 +163,15 @@ impl QianwenClient {
             .ok_or_else(|| AppError::Message("千问控制台 Cookie 为空".to_string()))?;
         let sec_token = self.fetch_sec_token(cookie).await?;
         let url = self.api_url(product)?;
+        let refresh_nonce = Utc::now().timestamp_millis().to_string();
         let response = self
             .client
             .post(url)
-            .query(&api_query(product, action, &params))
+            .query(&api_query(product, action, &params, &refresh_nonce))
             .header("Accept", "application/json, text/plain, */*")
             .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Cache-Control", "no-cache, no-store, max-age=0")
+            .header("Pragma", "no-cache")
             .header("Origin", "https://platform.qianwenai.com")
             .header("Referer", "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual")
             .header("Cookie", cookie)
@@ -169,7 +208,10 @@ impl QianwenClient {
         let response = self
             .client
             .get(url)
+            .query(&[("_t", Utc::now().timestamp_millis().to_string())])
             .header("Accept", "application/json, text/plain, */*")
+            .header("Cache-Control", "no-cache, no-store, max-age=0")
+            .header("Pragma", "no-cache")
             .header("Referer", "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual")
             .header("Cookie", cookie)
             .send()
@@ -202,10 +244,11 @@ impl QianwenClient {
     }
 }
 
-fn api_query(product: &str, action: &str, params: &Value) -> Vec<(String, String)> {
+fn api_query(product: &str, action: &str, params: &Value, refresh_nonce: &str) -> Vec<(String, String)> {
     let mut query = vec![
         ("product".to_string(), product.to_string()),
         ("action".to_string(), action.to_string()),
+        ("_t".to_string(), refresh_nonce.to_string()),
     ];
     if let Some(api) = params.get("Api").and_then(|value| value.as_str()) {
         query.push(("api".to_string(), api.to_string()));
@@ -231,11 +274,13 @@ fn build_accounts(
     connection_id: &str,
     product_code: &str,
     usage: &Value,
+    subscription: Option<&Value>,
+    quota_config: Option<&Value>,
     summary: Option<&Value>,
     detail: Option<&Value>,
 ) -> Vec<QuotaAccount> {
     let mut accounts = Vec::new();
-    if let Some(account) = personal_usage_account(connection_id, product_code, usage) {
+    if let Some(account) = personal_usage_account(connection_id, product_code, usage, subscription, quota_config) {
         accounts.push(account);
     }
     if let Some(data) = summary.and_then(|value| value.get("Data")) {
@@ -284,28 +329,46 @@ fn personal_usage_account(
     connection_id: &str,
     product_code: &str,
     usage: &Value,
+    subscription: Option<&Value>,
+    quota_config: Option<&Value>,
 ) -> Option<QuotaAccount> {
     let data = usage.pointer("/DataV2/data/data")?;
+    let subscription_data = subscription.and_then(|value| value.pointer("/DataV2/data/data"));
+    let quota_data = quota_config.and_then(|value| value.pointer("/DataV2/data/data"));
+    let spec_code = subscription_data
+        .and_then(|value| value.get("specCode"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("lite");
+    let quota_for_spec = quota_data.and_then(|value| value.get(spec_code));
+    let five_hour_total = quota_for_spec
+        .and_then(|value| value_f64(value, &["five_hour"]))
+        .or_else(|| quota_for_spec.and_then(|value| value_f64(value, &["weekly"])));
+    let weekly_total = quota_for_spec
+        .and_then(|value| value_f64(value, &["weekly"]))
+        .or(five_hour_total);
+    let start_time = timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["startTime"])));
+    let end_time = timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["endTime"])));
     let mut windows = Vec::new();
-    if let Some(window) = percent_window(
+    if let Some(window) = ratio_window(
         "qianwen-personal-5h",
         "5 小时",
         PeriodType::Rolling,
         Some(5 * 60 * 60),
         value_f64(data, &["per5HourPercentage"]),
-        None,
+        five_hour_total,
+        timestamp_millis(value_i64(data, &["per5HourResetTime"])),
     ) {
         windows.push(window);
     }
-    // per1WeekPercentage is a used percent (0.0 = full, 100.0 = exhausted),
-    // identical in semantics to per5HourPercentage; the weekly reset time is
-    // no longer returned by the current API and is left null when absent.
-    if let Some(window) = percent_window(
+    // Qianwen names these fields Percentage, but the value is a used ratio:
+    // 1.0 means 100% used/exhausted, 0.30360288 means 30.360288% used.
+    if let Some(window) = ratio_window(
         "qianwen-personal-weekly",
         "每周",
         PeriodType::Weekly,
         Some(7 * 24 * 60 * 60),
         value_f64(data, &["per1WeekPercentage"]),
+        weekly_total,
         timestamp_millis(value_i64(data, &["per1WeekResetTime"])),
     ) {
         windows.push(window);
@@ -320,40 +383,44 @@ fn personal_usage_account(
         external_id: "qianwen-token-plan-personal".to_string(),
         display_name: "千问 Token Plan 个人版".to_string(),
         masked_identifier: Some(product_code.to_string()),
-        plan_name: product_code.to_string(),
-        status: AccountStatus::Available,
+        plan_name: plan_label(spec_code).to_string(),
+        status: subscription_status(start_time, end_time),
         critical_window_id,
         next_reset_at: windows.iter().filter_map(|window| window.reset_at).min(),
         windows,
         success_count: None,
         failed_count: None,
         recent_requests: Vec::new(),
-        subscription_until: None,
+        subscription_until: end_time,
         chatgpt_account_id: None,
         synced_at: Utc::now(),
     })
 }
 
-fn percent_window(
+fn ratio_window(
     id: &str,
     name: &str,
     period_type: PeriodType,
     period_seconds: Option<i64>,
-    used_percent: Option<f64>,
+    used_ratio: Option<f64>,
+    total: Option<f64>,
     reset_at: Option<DateTime<Utc>>,
 ) -> Option<QuotaWindow> {
-    let used = used_percent?;
-    let remaining = (100.0 - used).clamp(0.0, 100.0);
+    let used_ratio = used_ratio?;
+    let total = total.unwrap_or(100.0).max(0.0);
+    let used = (total * used_ratio).clamp(0.0, total);
+    let remaining = (total - used).clamp(0.0, total);
+    let remaining_percent = percent_remaining(total, remaining);
     Some(QuotaWindow {
         id: id.to_string(),
         name: name.to_string(),
         period_type,
         period_seconds,
-        total: Some(100.0),
-        used: Some(used.clamp(0.0, 100.0)),
+        total: Some(total),
+        used: Some(used),
         remaining: Some(remaining),
-        remaining_percent: Some(remaining),
-        unit: QuotaUnit::Percent,
+        remaining_percent,
+        unit: QuotaUnit::Credit,
         reset_at,
         is_active: true,
         is_current_constraint: true,
@@ -591,6 +658,11 @@ fn default_gateway_base_url() -> String {
 mod tests {
     use super::*;
 
+    fn assert_approx(actual: Option<f64>, expected: f64) {
+        let actual = actual.expect("expected numeric value");
+        assert!((actual - expected).abs() < 0.000001, "actual={actual}, expected={expected}");
+    }
+
     #[test]
     fn maps_subscription_summary_to_quota_windows() {
         let raw = r#"
@@ -613,7 +685,7 @@ mod tests {
         "#;
         let usage: Value = serde_json::from_str(r#"{ "DataV2": { "data": { "data": {} } } }"#).unwrap();
         let summary: Value = serde_json::from_str(raw).unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&summary), None);
+        let accounts = build_accounts("conn", "token-plan", &usage, None, None, Some(&summary), None);
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].external_id, "qianwen-token-plan:standard");
         assert_eq!(accounts[0].windows[0].remaining, Some(1500.0));
@@ -643,7 +715,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&summary), Some(&detail));
+        let accounts = build_accounts("conn", "token-plan", &usage, None, None, Some(&summary), Some(&detail));
         assert_eq!(accounts.len(), 2);
         assert_eq!(accounts[1].display_name, "加油包 A");
         assert_eq!(accounts[1].windows[0].remaining_percent, Some(30.0));
@@ -657,8 +729,9 @@ mod tests {
               "DataV2": {
                 "data": {
                   "data": {
-                    "per5HourPercentage": 0.0,
-                    "per1WeekPercentage": 1.0,
+                    "per5HourPercentage": 1.0,
+                    "per5HourResetTime": 1785090540000,
+                    "per1WeekPercentage": 0.30360288,
                     "per1WeekResetTime": 1785067800000
                   }
                 }
@@ -667,20 +740,61 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, None, None);
+        let subscription: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "specCode": "lite",
+                    "startTime": 1784462642000,
+                    "endTime": 1787155200000,
+                    "status": "VALID"
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let quota_config: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "lite": {
+                      "five_hour": 700.0,
+                      "weekly": 2500.0
+                    }
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].external_id, "qianwen-token-plan-personal");
         assert_eq!(accounts[0].windows.len(), 2);
-        assert_eq!(accounts[0].windows[0].remaining_percent, Some(100.0));
-        // per1WeekPercentage is a used percent: 1.0 used -> 99.0 remaining.
-        assert_eq!(accounts[0].windows[1].remaining_percent, Some(99.0));
+        assert_eq!(accounts[0].plan_name, "lite");
+        assert_eq!(accounts[0].windows[0].total, Some(700.0));
+        assert_eq!(accounts[0].windows[0].used, Some(700.0));
+        assert_eq!(accounts[0].windows[0].remaining, Some(0.0));
+        assert_eq!(accounts[0].windows[0].remaining_percent, Some(0.0));
+        assert!(accounts[0].windows[0].reset_at.is_some());
+        assert_eq!(accounts[0].windows[1].total, Some(2500.0));
+        assert_approx(accounts[0].windows[1].used, 759.0072);
+        assert_approx(accounts[0].windows[1].remaining, 1740.9928);
+        assert_approx(accounts[0].windows[1].remaining_percent, 69.639712);
         assert!(accounts[0].windows[1].reset_at.is_some());
     }
 
     #[test]
     fn maps_personal_usage_full_quota() {
         // Real response when the Token Plan quota is completely unused/full:
-        // both windows report 0.0 used percent, and the weekly reset time is
+        // both windows report 0.0 used ratio, and the weekly reset time is
         // no longer returned by the current API.
         let usage: Value = serde_json::from_str(
             r#"
@@ -697,11 +811,170 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, None, None);
+        let subscription: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "specCode": "lite",
+                    "startTime": 1784462642000,
+                    "endTime": 1787155200000,
+                    "status": "VALID"
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let quota_config: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "lite": {
+                      "five_hour": 700.0,
+                      "weekly": 2500.0
+                    }
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].windows.len(), 2);
-        assert_eq!(accounts[0].windows[0].remaining_percent, Some(100.0));
-        assert_eq!(accounts[0].windows[1].remaining_percent, Some(100.0));
+        assert_eq!(accounts[0].windows[0].total, Some(700.0));
+        assert_eq!(accounts[0].windows[0].remaining, Some(700.0));
+        assert_eq!(accounts[0].windows[1].total, Some(2500.0));
+        assert_eq!(accounts[0].windows[1].remaining, Some(2500.0));
         assert!(accounts[0].windows[1].reset_at.is_none());
+    }
+
+    #[test]
+    fn falls_back_to_percentage_when_quota_config_missing() {
+        let usage: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "per5HourPercentage": 0.5,
+                    "per1WeekPercentage": 0.5
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let subscription: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "specCode": "unknown",
+                    "startTime": 1784462642000,
+                    "endTime": 1787155200000,
+                    "status": "VALID"
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), None, None, None);
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].windows[0].total, Some(100.0));
+        assert_eq!(accounts[0].windows[0].remaining, Some(50.0));
+        assert_eq!(accounts[0].windows[1].total, Some(100.0));
+        assert_eq!(accounts[0].windows[1].remaining, Some(50.0));
+    }
+
+    #[test]
+    fn one_ratio_means_exhausted() {
+        let usage: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "per5HourPercentage": 1.0,
+                    "per1WeekPercentage": 1.0
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let subscription: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "specCode": "lite",
+                    "startTime": 1784462642000,
+                    "endTime": 1787155200000,
+                    "status": "VALID"
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+        let quota_config: Value = serde_json::from_str(
+            r#"
+            {
+              "DataV2": {
+                "data": {
+                  "data": {
+                    "lite": {
+                      "five_hour": 700.0,
+                      "weekly": 2500.0
+                    }
+                  }
+                }
+              }
+            }
+            "#,
+        )
+        .unwrap();
+
+        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
+
+        assert_eq!(accounts[0].windows[0].used, Some(700.0));
+        assert_eq!(accounts[0].windows[0].remaining, Some(0.0));
+        assert_eq!(accounts[0].windows[0].remaining_percent, Some(0.0));
+        assert_eq!(accounts[0].windows[1].used, Some(2500.0));
+        assert_eq!(accounts[0].windows[1].remaining, Some(0.0));
+        assert_eq!(accounts[0].windows[1].remaining_percent, Some(0.0));
+    }
+
+    #[test]
+    fn usage_query_contains_refresh_nonce() {
+        let params = serde_json::json!({
+            "Api": "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage"
+        });
+        let query = api_query("sfm_bailian", "BroadScopeAspnGateway", &params, "nonce-1");
+
+        assert!(query.contains(&("product".to_string(), "sfm_bailian".to_string())));
+        assert!(query.contains(&(
+            "action".to_string(),
+            "BroadScopeAspnGateway".to_string()
+        )));
+        assert!(query.contains(&("_t".to_string(), "nonce-1".to_string())));
+        assert!(query.contains(&(
+            "api".to_string(),
+            "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage".to_string()
+        )));
     }
 }

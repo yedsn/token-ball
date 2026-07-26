@@ -1360,6 +1360,24 @@ button:disabled {
   min-height: 300px;
 }
 
+.quota-board-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.quota-board-head h2 {
+  margin: 0;
+}
+
+.quota-board-head span {
+  color: #8fa19b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .display-panel,
 .selected-preview {
   display: grid;

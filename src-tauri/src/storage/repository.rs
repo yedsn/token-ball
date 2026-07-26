@@ -509,6 +509,7 @@ pub async fn load_summary(pool: &SqlitePool, stale: bool) -> AppResult<QuotaSumm
 }
 
 pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
+    normalize_legacy_settings(pool).await?;
     for (key, value) in [
         ("orb.size", "84"),
         ("orb.visible", "true"),
@@ -541,6 +542,25 @@ pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
         )
         .bind("display.quota")
         .bind(value)
+        .bind(Utc::now().to_rfc3339())
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn normalize_legacy_settings(pool: &SqlitePool) -> AppResult<()> {
+    let current = get_setting(pool, "sync.intervalSeconds").await?;
+    if matches!(current.as_deref(), Some("180") | Some("1800")) {
+        sqlx::query(
+            r#"
+            UPDATE settings
+            SET value = ?2, updated_at = ?3
+            WHERE key = ?1
+            "#,
+        )
+        .bind("sync.intervalSeconds")
+        .bind("3600")
         .bind(Utc::now().to_rfc3339())
         .execute(pool)
         .await?;
@@ -776,6 +796,37 @@ pub async fn get_setting(pool: &SqlitePool, key: &str) -> AppResult<Option<Strin
         .fetch_optional(pool)
         .await?;
     Ok(row.map(|row| row.try_get("value")).transpose()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+
+    async fn memory_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        crate::storage::database::run_migrations_for_test(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn normalizes_legacy_sync_interval_to_hourly() {
+        let pool = memory_pool().await;
+        sqlx::query(
+            r#"
+            INSERT INTO settings (key, value, updated_at)
+            VALUES ('sync.intervalSeconds', '180', '2026-07-26T00:00:00Z')
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        ensure_default_settings(&pool).await.unwrap();
+
+        let value = get_setting(&pool, "sync.intervalSeconds").await.unwrap();
+        assert_eq!(value.as_deref(), Some("3600"));
+    }
 }
 
 async fn load_windows(pool: &SqlitePool, snapshot_id: &str) -> AppResult<Vec<QuotaWindow>> {

@@ -764,6 +764,11 @@ function resetLabel(value?: string | null) {
   return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function syncedLabel(value?: string | null) {
+  const label = resetLabel(value);
+  return label === "--" ? "更新于 --" : `更新于 ${label}`;
+}
+
 function activityLabel(account: QuotaAccount) {
   if (account.windows.length === 0) return "--";
   const latest = account.recentRequests?.[account.recentRequests.length - 1];
@@ -923,7 +928,10 @@ async function startTitlebarDrag(event: PointerEvent) {
 
         <section class="content-grid overview-grid">
           <section class="panel account-panel quota-board">
-            <h2>模型额度</h2>
+            <header class="quota-board-head">
+              <h2>模型额度</h2>
+              <span>{{ syncedLabel(store.summary.lastSyncedAt) }}</span>
+            </header>
             <div v-if="!store.hasConnection" class="empty-state">保存 CLIProxyAPI 连接后开始同步账号。</div>
             <div v-else-if="store.enabledAccounts.length === 0" class="empty-state">暂无启用实例账号数据；如需展示，请先启用对应实例。</div>
             <div v-else class="connection-groups">
@@ -1276,7 +1284,10 @@ async function startTitlebarDrag(event: PointerEvent) {
         </form>
 
         <section class="panel account-panel quota-board">
-          <h2>实例账号额度</h2>
+          <header class="quota-board-head">
+            <h2>实例账号额度</h2>
+            <span>{{ syncedLabel(currentConnection?.lastSyncedAt ?? store.summary.lastSyncedAt) }}</span>
+          </header>
           <div v-if="!currentConnection" class="empty-state">保存实例后会在这里展示该实例下的账号。</div>
           <div v-else-if="currentConnectionAccounts.length === 0" class="empty-state">该实例暂无账号数据，保存后点击立即刷新同步额度。</div>
           <div v-else class="connection-groups instance-account-groups">

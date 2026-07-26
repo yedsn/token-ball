@@ -140,3 +140,8 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+pub async fn run_migrations_for_test(pool: &SqlitePool) -> AppResult<()> {
+    run_migrations(pool).await
+}
