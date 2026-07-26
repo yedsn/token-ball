@@ -1,3 +1,4 @@
+mod app_icon_rgba;
 mod app_state;
 mod commands;
 mod error;
@@ -50,6 +51,11 @@ pub fn run() {
         }))
         .setup(move |app| {
             tray::setup_tray(app, &initial_summary, &initial_settings)?;
+            let _ = commands::app_icon_set_style(
+                app.handle().clone(),
+                initial_settings.app_icon_style.clone(),
+                Some(initial_settings.custom_app_icon_data_url.clone()),
+            );
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tray::apply_orb_visibility(&app_handle).await;
@@ -67,12 +73,14 @@ pub fn run() {
             commands::plugin_set_enabled,
             commands::plugin_add,
             commands::plugin_delete,
+            commands::app_icon_set_style,
             commands::quota_get_latest,
             commands::quota_refresh_all,
             commands::settings_get_display,
             commands::settings_save_display,
             commands::window_show,
             commands::window_hide,
+            commands::window_open_main_overview,
             commands::orb_get_visible
         ])
         .run(tauri::generate_context!())

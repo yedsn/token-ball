@@ -120,6 +120,8 @@ export interface DisplaySettings {
   showOrbRefreshButton: boolean;
   orbAnimationEnabled: boolean;
   trayIconStyle: "orb" | "minimal";
+  appIconStyle: "meter" | "orb" | "custom";
+  customAppIconDataUrl: string;
   selectedAccountIds: string[];
   customItems: DisplayCustomItem[];
 }

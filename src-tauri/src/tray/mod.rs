@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use std::time::Duration;
 
 use tauri::{
     image::Image,
@@ -28,6 +32,7 @@ pub fn setup_tray(
     let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_orb, &hide_orb, &open_main, &refresh, &quit])?;
+    let tray_click_generation = Arc::new(AtomicU64::new(0));
 
     TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
@@ -51,12 +56,28 @@ pub fn setup_tray(
             "quit" => app.exit(0),
             _ => {}
         })
-        .on_tray_icon_event(|tray, event| match event {
+        .on_tray_icon_event(move |tray, event| match event {
             TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                position,
                 ..
             } => {
+                let app = tray.app_handle().clone();
+                let click_generation = tray_click_generation.clone();
+                let current_generation = click_generation.fetch_add(1, Ordering::Relaxed) + 1;
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(220)).await;
+                    if click_generation.load(Ordering::Relaxed) == current_generation {
+                        windows::show_hover_at(&app, position.cast::<i32>());
+                    }
+                });
+            }
+            TrayIconEvent::DoubleClick {
+                button: MouseButton::Left,
+                ..
+            } => {
+                tray_click_generation.fetch_add(1, Ordering::Relaxed);
                 windows::open_main_overview(tray.app_handle());
             }
             TrayIconEvent::Enter { .. } => {
@@ -233,6 +254,19 @@ fn tray_icon_for_summary(summary: &QuotaSummary, settings: &DisplaySettings) -> 
     } else {
         draw_orb_icon(percent.unwrap_or(0.0), color)
     }
+}
+
+pub fn quota_orb_icon(percent: f64, status: ConnectionStatus, stale: bool) -> Image<'static> {
+    let color = if stale || status == ConnectionStatus::Degraded {
+        (127, 142, 163)
+    } else if percent < 30.0 {
+        (255, 90, 84)
+    } else if percent < 60.0 {
+        (233, 185, 73)
+    } else {
+        (25, 195, 125)
+    };
+    draw_orb_icon(percent.clamp(0.0, 100.0), color)
 }
 
 fn draw_minimal_icon(color: (u8, u8, u8)) -> Image<'static> {

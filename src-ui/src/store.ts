@@ -11,6 +11,7 @@ import {
   onDisplaySettingsUpdated,
   addPlugin,
   deletePlugin,
+  setAppIconStyle,
   refreshAllQuota,
   setConnectionEnabled,
   saveDisplaySettings,
@@ -41,6 +42,8 @@ const defaultDisplaySettings: DisplaySettings = {
   showOrbRefreshButton: true,
   orbAnimationEnabled: true,
   trayIconStyle: "orb",
+  appIconStyle: "meter",
+  customAppIconDataUrl: "",
   selectedAccountIds: [],
   customItems: []
 };
@@ -193,6 +196,11 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async updateTrayIconStyle(style: DisplaySettings["trayIconStyle"]) {
       await this.saveDisplay({ ...this.displaySettings, trayIconStyle: style });
+    },
+    async updateAppIconStyle(style: DisplaySettings["appIconStyle"], customAppIconDataUrl?: string) {
+      const nextCustomIcon = customAppIconDataUrl ?? this.displaySettings.customAppIconDataUrl;
+      await setAppIconStyle(style, nextCustomIcon);
+      await this.saveDisplay({ ...this.displaySettings, appIconStyle: style, customAppIconDataUrl: nextCustomIcon });
     },
     async addCustomDisplayItem(label: string, value: string) {
       const item = { id: crypto.randomUUID(), label: label.trim(), value: value.trim(), enabled: true };

@@ -23,7 +23,8 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
-        "center": true
+        "center": true,
+        "visible": false
       },
       {
         "label": "main",
@@ -42,8 +43,8 @@
         "label": "hover",
         "title": "TokenBall 详情",
         "url": "/?view=hover",
-        "width": 360,
-        "height": 460,
+        "width": 760,
+        "height": 420,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -59,6 +60,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

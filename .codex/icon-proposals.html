@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TokenBall 图标候选方案</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #111827;
+    }
+    main {
+      width: min(1120px, calc(100% - 48px));
+      margin: 40px auto;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+    .intro {
+      margin: 0 0 28px;
+      color: #475569;
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 160px;
+      height: 160px;
+      margin: 0 auto 18px;
+    }
+    svg {
+      width: 144px;
+      height: 144px;
+      display: block;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+    p {
+      margin: 0 0 8px;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .colors {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .swatch {
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TokenBall 图标候选方案</h1>
+    <p class="intro">只用于方案预览，尚未生成最终 SVG/PNG/ICO 图标资源。</p>
+
+    <section class="grid" aria-label="图标候选方案">
+      <article class="card">
+        <div class="preview" aria-hidden="true">
+          <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect width="512" height="512" rx="96" fill="#0F172A"/>
+            <circle cx="256" cy="256" r="142" fill="none" stroke="#F8FAFC" stroke-width="32" stroke-linecap="round"/>
+            <path d="M256 114 A142 142 0 0 1 398 256" fill="none" stroke="#38BDF8" stroke-width="40" stroke-linecap="round"/>
+            <circle cx="256" cy="256" r="42" fill="none" stroke="#F8FAFC" stroke-width="28"/>
+            <line x1="256" y1="180" x2="256" y2="142" stroke="#38BDF8" stroke-width="24" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2>V1 额度环球</h2>
+        <p>外层球形额度环 + 中心 Token 点，表达“余量球”和剩余额度。</p>
+        <p>圆角方底，主圆居中，右上留一段强调色进度弧。</p>
+        <div class="colors" aria-label="配色">
+          <span class="swatch" style="background:#0F172A" title="#0F172A"></span>
+          <span class="swatch" style="background:#F8FAFC" title="#F8FAFC"></span>
+          <span class="swatch" style="background:#38BDF8" title="#38BDF8"></span>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="preview" aria-hidden="true">
+          <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect width="512" height="512" rx="96" fill="#111827"/>
+            <circle cx="256" cy="236" r="88" fill="none" stroke="#E5E7EB" stroke-width="30"/>
+            <circle cx="150" cy="344" r="30" fill="none" stroke="#10B981" stroke-width="24"/>
+            <circle cx="362" cy="344" r="30" fill="none" stroke="#10B981" stroke-width="24"/>
+            <circle cx="256" cy="392" r="24" fill="#10B981"/>
+            <line x1="202" y1="306" x2="172" y2="326" stroke="#E5E7EB" stroke-width="22" stroke-linecap="round"/>
+            <line x1="310" y1="306" x2="340" y2="326" stroke="#E5E7EB" stroke-width="22" stroke-linecap="round"/>
+            <line x1="256" y1="324" x2="256" y2="368" stroke="#E5E7EB" stroke-width="22" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2>V2 Token 球轨道</h2>
+        <p>中心圆球 + 三个轨道节点，表达多个 AI 服务渠道汇总。</p>
+        <p>中心球偏大，左右下三个小节点用折线连接。</p>
+        <div class="colors" aria-label="配色">
+          <span class="swatch" style="background:#111827" title="#111827"></span>
+          <span class="swatch" style="background:#E5E7EB" title="#E5E7EB"></span>
+          <span class="swatch" style="background:#10B981" title="#10B981"></span>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="preview" aria-hidden="true">
+          <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
+            <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round"/>
+            <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round"/>
+            <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
+            <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round"/>
+            <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
+            <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+          </svg>
+        </div>
+        <h2>V3 余量仪表球</h2>
+        <p>球体仪表盘 + 指针，表达快速查看当前额度紧张程度。</p>
+        <p>半圆仪表在上，底部短横作为悬浮托底。</p>
+        <div class="colors" aria-label="配色">
+          <span class="swatch" style="background:#1E1B4B" title="#1E1B4B"></span>
+          <span class="swatch" style="background:#E0E7FF" title="#E0E7FF"></span>
+          <span class="swatch" style="background:#A78BFA" title="#A78BFA"></span>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="preview" aria-hidden="true">
+          <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect width="512" height="512" rx="96" fill="#0F172A"/>
+            <circle cx="256" cy="256" r="138" fill="none" stroke="#F8FAFC" stroke-width="30"/>
+            <path d="M206 226 L256 176 L306 226" fill="none" stroke="#3B82F6" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M306 286 L256 336 L206 286" fill="none" stroke="#3B82F6" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="256" y1="180" x2="256" y2="318" stroke="#F8FAFC" stroke-width="24" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2>V4 恢复窗口球</h2>
+        <p>圆球 + 内部回转箭头，表达额度窗口和冷却后恢复。</p>
+        <p>球形外环居中，内部 45 度折线箭头形成循环感。</p>
+        <div class="colors" aria-label="配色">
+          <span class="swatch" style="background:#0F172A" title="#0F172A"></span>
+          <span class="swatch" style="background:#F8FAFC" title="#F8FAFC"></span>
+          <span class="swatch" style="background:#3B82F6" title="#3B82F6"></span>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

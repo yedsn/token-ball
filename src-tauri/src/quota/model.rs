@@ -175,6 +175,10 @@ pub struct DisplaySettings {
     pub orb_animation_enabled: bool,
     #[serde(default = "default_tray_icon_style")]
     pub tray_icon_style: String,
+    #[serde(default = "default_app_icon_style")]
+    pub app_icon_style: String,
+    #[serde(default)]
+    pub custom_app_icon_data_url: String,
     #[serde(default)]
     pub selected_account_ids: Vec<String>,
     #[serde(default)]
@@ -201,6 +205,8 @@ impl Default for DisplaySettings {
             show_orb_refresh_button: true,
             orb_animation_enabled: true,
             tray_icon_style: default_tray_icon_style(),
+            app_icon_style: default_app_icon_style(),
+            custom_app_icon_data_url: String::new(),
             selected_account_ids: Vec::new(),
             custom_items: Vec::new(),
         }
@@ -213,6 +219,10 @@ fn default_true() -> bool {
 
 fn default_tray_icon_style() -> String {
     "orb".to_string()
+}
+
+fn default_app_icon_style() -> String {
+    "meter".to_string()
 }
 
 impl Default for QuotaSummary {

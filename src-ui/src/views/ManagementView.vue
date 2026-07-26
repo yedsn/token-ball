@@ -10,6 +10,7 @@ import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from
 type MainPage = "overview" | "orbSettings" | "instance";
 type SettingsSection = "appearance" | "plugins";
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
+type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
 const store = useTokenBallStore();
 const page = ref<MainPage>("overview");
@@ -18,6 +19,8 @@ const orbVisible = ref(true);
 const saving = ref(false);
 const testing = ref(false);
 const notice = ref("");
+const iconError = ref("");
+const appIconInputRef = ref<HTMLInputElement | null>(null);
 const customForm = reactive({ label: "", value: "" });
 const pluginForm = reactive({ id: "", name: "", version: "1.0.0", category: "provider", capability: "", permissions: "" });
 const form = reactive({
@@ -105,6 +108,11 @@ const totalRemainingLabel = computed(() => {
 });
 
 const equivalentLabel = computed(() => `${store.totalEquivalentAccounts.toFixed(2)} 账号`);
+const appIconOptions = computed(() => [
+  { id: "meter" as const, label: "V3 余量仪表", description: "用于窗口、任务栏和安装包的默认程序图标" },
+  { id: "orb" as const, label: "余量球", description: "使用与桌面悬浮球一致的绿色余量球图标" },
+  { id: "custom" as const, label: "自定义", description: "上传 PNG、JPG 或 WebP 图标", src: store.displaySettings.customAppIconDataUrl }
+]);
 
 watch(
   () => store.connections,
@@ -310,6 +318,7 @@ function findExpiryWindow(account: QuotaAccount, period: "weekly" | "monthly") {
 
 function windowPeriodKey(window: QuotaWindow) {
   const value = `${window.periodType} ${window.id} ${window.name}`.toLowerCase();
+  if (value.includes("5h") || value.includes("5 h") || window.periodSeconds === 5 * 60 * 60) return "fiveHour";
   if (value.includes("weekly") || value.includes("week") || value.includes("7d") || value.includes("每周") || value.includes("近 1 周")) return "weekly";
   if (value.includes("monthly") || value.includes("month") || value.includes("30d") || value.includes("每月") || value.includes("近 1 月")) return "monthly";
   return "other";
@@ -325,8 +334,23 @@ function windowPriority(window: QuotaWindow) {
   const period = windowPeriodKey(window);
   if (period === "monthly") return 30 * 24 * 60 * 60;
   if (period === "weekly") return 7 * 24 * 60 * 60;
+  if (period === "fiveHour") return 5 * 60 * 60;
   if (typeof window.periodSeconds === "number") return window.periodSeconds;
   return typeof window.total === "number" ? window.total : 0;
+}
+
+function accountPeriodWindow(account: QuotaAccount, period: BalancePeriod) {
+  return account.windows.find((window) => windowPeriodKey(window) === period) ?? null;
+}
+
+function accountPeriodRemainingLabel(account: QuotaAccount, period: BalancePeriod) {
+  const window = accountPeriodWindow(account, period);
+  return window ? windowPercentLabel(window) : "--";
+}
+
+function accountPeriodRemainingClass(account: QuotaAccount, period: BalancePeriod) {
+  const window = accountPeriodWindow(account, period);
+  return window ? windowClass(window) : "unknown";
 }
 
 function balanceResetTime(row: BalanceRankingRow) {
@@ -445,6 +469,64 @@ function toggleDisplayFlag(key: "showAvailableAccounts" | "showConnectionStatus"
   store.updateDisplayFlag(key, (event.target as HTMLInputElement).checked);
 }
 
+async function setProgramIcon(style: "meter" | "orb" | "custom") {
+  iconError.value = "";
+  if (style === "custom" && !store.displaySettings.customAppIconDataUrl) {
+    chooseCustomIcon();
+    return;
+  }
+  try {
+    await store.updateAppIconStyle(style);
+  } catch (error) {
+    iconError.value = String(error);
+  }
+}
+
+function chooseCustomIcon() {
+  appIconInputRef.value?.click();
+}
+
+function handleProgramIconChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+  if (!allowedTypes.includes(file.type)) {
+    iconError.value = "请选择 PNG、JPG 或 WebP 图标文件。";
+    input.value = "";
+    return;
+  }
+  if (file.size > 1024 * 1024) {
+    iconError.value = "图标文件不能超过 1MB。";
+    input.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async () => {
+    if (typeof reader.result !== "string") return;
+    try {
+      iconError.value = "";
+      await store.updateAppIconStyle("custom", reader.result);
+    } catch (error) {
+      iconError.value = String(error);
+    }
+  };
+  reader.onerror = () => {
+    iconError.value = "图标文件读取失败。";
+  };
+  reader.readAsDataURL(file);
+  input.value = "";
+}
+
+async function clearCustomProgramIcon() {
+  iconError.value = "";
+  try {
+    await store.updateAppIconStyle("meter", "");
+  } catch (error) {
+    iconError.value = String(error);
+  }
+}
+
 async function addCustomItem() {
   if (!customForm.label.trim() && !customForm.value.trim()) return;
   await store.addCustomDisplayItem(customForm.label, customForm.value);
@@ -517,7 +599,25 @@ function dateLabel(value?: string | null) {
 <template>
   <main class="management-shell">
     <aside>
-      <div class="brand-mark">TB</div>
+      <div class="brand-mark" aria-label="TokenBall">
+        <img v-if="store.displaySettings.appIconStyle === 'custom' && store.displaySettings.customAppIconDataUrl" :src="store.displaySettings.customAppIconDataUrl" alt="" />
+        <svg v-else-if="store.displaySettings.appIconStyle === 'orb'" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="512" height="512" rx="96" fill="#0F172A"/>
+          <circle cx="256" cy="256" r="150" fill="none" stroke="#F8FAFC" stroke-width="34" stroke-linecap="round"/>
+          <path d="M256 104 A152 152 0 0 1 408 256" fill="none" stroke="#38BDF8" stroke-width="42" stroke-linecap="round"/>
+          <circle cx="256" cy="256" r="42" fill="none" stroke="#F8FAFC" stroke-width="28"/>
+          <line x1="256" y1="180" x2="256" y2="144" stroke="#38BDF8" stroke-width="24" stroke-linecap="round"/>
+        </svg>
+        <svg v-else viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
+          <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
+          <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
+          <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+        </svg>
+      </div>
       <button class="nav" :class="{ active: page === 'overview' }" @click="openPage('overview')"><Gauge :size="16" />总览</button>
       <button class="nav" :class="{ active: page === 'orbSettings' }" @click="openPage('orbSettings')"><Settings2 :size="16" />设置</button>
 
@@ -598,6 +698,9 @@ function dateLabel(value?: string | null) {
                 <th>账号</th>
                 <th>优先额度</th>
                 <th>剩余</th>
+                <th>5h</th>
+                <th>周</th>
+                <th>月</th>
                 <th>用量</th>
                 <th>实例</th>
               </tr>
@@ -608,6 +711,9 @@ function dateLabel(value?: string | null) {
                 <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}</span></td>
                 <td>{{ balanceWindowName(row) }}</td>
                 <td><b>{{ balanceRemainingLabel(row) }}</b></td>
+                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></td>
+                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></td>
+                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></td>
                 <td>{{ balanceUsageLabel(row) }}</td>
                 <td>{{ accountConnectionLabel(row.account) }}</td>
               </tr>
@@ -708,7 +814,62 @@ function dateLabel(value?: string | null) {
           </div>
 
           <div class="setting-block">
+            <div class="setting-block-title">程序图标</div>
+            <div class="app-icon-options">
+              <button
+                v-for="option in appIconOptions"
+                :key="option.id"
+                class="app-icon-option"
+                :class="{ active: store.displaySettings.appIconStyle === option.id }"
+                type="button"
+                @click="setProgramIcon(option.id)"
+              >
+                <span class="app-icon-preview">
+                  <svg v-if="option.id === 'meter'" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
+                    <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
+                    <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
+                    <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+                  </svg>
+                  <svg v-else-if="option.id === 'orb'" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="512" height="512" rx="96" fill="#0F172A"/>
+                    <circle cx="256" cy="256" r="150" fill="none" stroke="#F8FAFC" stroke-width="34" stroke-linecap="round"/>
+                    <path d="M256 104 A152 152 0 0 1 408 256" fill="none" stroke="#38BDF8" stroke-width="42" stroke-linecap="round"/>
+                    <circle cx="256" cy="256" r="42" fill="none" stroke="#F8FAFC" stroke-width="28"/>
+                    <line x1="256" y1="180" x2="256" y2="144" stroke="#38BDF8" stroke-width="24" stroke-linecap="round"/>
+                  </svg>
+                  <img v-else-if="store.displaySettings.customAppIconDataUrl" :src="store.displaySettings.customAppIconDataUrl" alt="" />
+                  <svg v-else viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
+                    <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
+                    <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
+                    <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+                  </svg>
+                </span>
+                <span class="app-icon-copy">
+                  <strong>{{ option.label }}</strong>
+                  <small>{{ option.description }}</small>
+                </span>
+              </button>
+            </div>
+            <div class="custom-icon-actions">
+              <button class="primary" type="button" @click="chooseCustomIcon">上传自定义图标</button>
+              <button v-if="store.displaySettings.customAppIconDataUrl" type="button" @click="clearCustomProgramIcon">清除自定义图标</button>
+              <input ref="appIconInputRef" class="hidden-file-input" type="file" accept="image/png,image/jpeg,image/webp" @change="handleProgramIconChange" />
+            </div>
+            <p class="setting-hint">程序图标会立即应用到主窗口和任务栏；如果你要替换安装包图标，还需要重新构建应用。</p>
+            <p v-if="iconError" class="setting-error">{{ iconError }}</p>
+          </div>
+
+          <div class="setting-block">
             <div class="setting-block-title">托盘图标</div>
+            <p class="setting-hint">托盘图标保留余量球样式，会根据当前额度状态显示绿色、黄色、红色或灰色。</p>
             <div class="segmented-control">
               <button :class="{ active: store.displaySettings.trayIconStyle === 'orb' }" @click="store.updateTrayIconStyle('orb')">能量球</button>
               <button :class="{ active: store.displaySettings.trayIconStyle === 'minimal' }" @click="store.updateTrayIconStyle('minimal')">简洁色块</button>

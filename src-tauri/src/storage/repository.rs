@@ -410,6 +410,23 @@ pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
         .execute(pool)
         .await?;
     }
+    if get_setting(pool, "display.quota").await?.is_none() {
+        let default_settings = DisplaySettings::default();
+        let value = serde_json::to_string(&default_settings)
+            .map_err(|error| AppError::Message(error.to_string()))?;
+        sqlx::query(
+            r#"
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(key) DO NOTHING
+            "#,
+        )
+        .bind("display.quota")
+        .bind(value)
+        .bind(Utc::now().to_rfc3339())
+        .execute(pool)
+        .await?;
+    }
     Ok(())
 }
 

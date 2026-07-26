@@ -40,3 +40,9 @@ pub async fn orb_get_visible(state: State<'_, Arc<AppState>>) -> Result<bool, St
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn window_open_main_overview(app: AppHandle) -> Result<(), String> {
+    windows::open_main_overview(&app);
+    Ok(())
+}

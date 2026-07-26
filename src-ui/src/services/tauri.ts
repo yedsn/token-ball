@@ -38,6 +38,10 @@ export function saveDisplaySettings(settings: DisplaySettings): Promise<DisplayS
   return invoke("settings_save_display", { settings });
 }
 
+export function setAppIconStyle(style: DisplaySettings["appIconStyle"], customDataUrl?: string): Promise<void> {
+  return invoke("app_icon_set_style", { style, customDataUrl: customDataUrl || null });
+}
+
 export function listPlugins(): Promise<PluginManifest[]> {
   return invoke("plugin_list");
 }
@@ -60,6 +64,10 @@ export function showWindow(label: string): Promise<void> {
 
 export function hideWindow(label: string): Promise<void> {
   return invoke("window_hide", { label });
+}
+
+export function openMainOverview(): Promise<void> {
+  return invoke("window_open_main_overview");
 }
 
 export function getOrbVisible(): Promise<boolean> {

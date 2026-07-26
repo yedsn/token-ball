@@ -2,8 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit } from "@tauri-apps/api/event";
 import { useTokenBallStore } from "../store";
-import { refreshAllQuota, showWindow, hideWindow } from "../services/tauri";
+import { refreshAllQuota, showWindow, hideWindow, openMainOverview } from "../services/tauri";
 
 const store = useTokenBallStore();
 const index = ref(0);
@@ -58,13 +59,17 @@ onUnmounted(() => {
 async function openHover() {
   paused.value = true;
   if (hoverTimer) window.clearTimeout(hoverTimer);
-  hoverTimer = window.setTimeout(() => showWindow("hover"), 420);
+  emit("hover://orb-enter");
+  hoverTimer = window.setTimeout(async () => {
+    await showWindow("hover");
+    emit("hover://orb-enter");
+  }, 180);
 }
 
 async function closeHover() {
   paused.value = false;
   if (hoverTimer) window.clearTimeout(hoverTimer);
-  window.setTimeout(() => hideWindow("hover"), 180);
+  emit("hover://orb-leave");
 }
 
 function resetLabel(value?: string | null) {
@@ -100,6 +105,11 @@ async function hideOrb() {
   await hideWindow("hover");
   await hideWindow("orb");
 }
+
+async function startDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
+  await getCurrentWindow().startDragging();
+}
 </script>
 
 <template>
@@ -108,18 +118,18 @@ async function hideOrb() {
     :class="[stateClass, { still: !store.displaySettings.orbAnimationEnabled }]"
     @mouseenter="openHover"
     @mouseleave="closeHover"
+    @pointerdown="startDrag"
     @contextmenu.prevent="hideOrb"
-    @dblclick="showWindow('main')"
+    @dblclick="openMainOverview"
   >
     <div class="energy-ring"></div>
     <div class="liquid" :style="{ height: `${Math.max(8, Math.min(92, percent))}%` }"></div>
     <div class="orb-gloss"></div>
-    <button class="drag" title="拖动" @mousedown="getCurrentWindow().startDragging()"></button>
     <div class="orb-content">
       <strong>{{ !store.ready ? '同步' : store.hasConnection ? current.value : '设置' }}</strong>
       <span>{{ !store.ready ? '加载中' : store.hasConnection ? current.title : 'CLI' }}</span>
     </div>
-    <button v-if="store.displaySettings.showOrbRefreshButton" class="refresh" title="刷新" @click.stop="refreshAllQuota()">
+    <button v-if="store.displaySettings.showOrbRefreshButton" class="refresh" title="刷新" @pointerdown.stop @click.stop="refreshAllQuota()">
       <RefreshCw :size="13" :class="{ spin: store.refreshing }" />
     </button>
   </main>
