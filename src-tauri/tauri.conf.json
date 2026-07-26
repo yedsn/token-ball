@@ -1,85 +1,85 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TokenBall",
-  "version": "0.1.0",
-  "identifier": "com.tokenball.desktop",
-  "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "label": "orb",
-        "title": "TokenBall",
-        "url": "/?view=orb",
-        "width": 84,
-        "height": 84,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "shadow": false,
-        "center": true,
-        "visible": false
-      },
-      {
-        "label": "main",
-        "title": "TokenBall 管理",
-        "url": "/?view=main",
-        "width": 1080,
-        "height": 720,
-        "minWidth": 900,
-        "minHeight": 620,
-        "resizable": true,
-        "decorations": false,
-        "center": true,
-        "visible": false
-      },
-      {
-        "label": "hover",
-        "title": "TokenBall 详情",
-        "url": "/?view=hover",
-        "width": 520,
-        "height": 470,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "shadow": false,
-        "visible": false
-      }
-    ],
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "createUpdaterArtifacts": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQjZGQkU2QTU2MzQwMjUKUldRbFFHT2w1dnUyODMrTWhCVkNmUGpDNDdlUTM5WmpUNmxnZU5kRlVMQ1RsaTNOMHJjSkcyTnUK",
-      "endpoints": [
-        "https://gitee.com/hongxiaojian/token-ball/releases/download/latest/latest.json",
-        "https://github.com/yedsn/token-ball/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
-  }
+    "$schema":  "https://schema.tauri.app/config/2",
+    "productName":  "TokenBall",
+    "version":  "0.1.1",
+    "identifier":  "com.tokenball.desktop",
+    "build":  {
+                  "beforeDevCommand":  "npm run dev",
+                  "devUrl":  "http://127.0.0.1:1420",
+                  "beforeBuildCommand":  "npm run build",
+                  "frontendDist":  "../dist"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "label":  "orb",
+                                    "title":  "TokenBall",
+                                    "url":  "/?view=orb",
+                                    "width":  84,
+                                    "height":  84,
+                                    "resizable":  false,
+                                    "decorations":  false,
+                                    "transparent":  true,
+                                    "alwaysOnTop":  true,
+                                    "skipTaskbar":  true,
+                                    "shadow":  false,
+                                    "center":  true,
+                                    "visible":  false
+                                },
+                                {
+                                    "label":  "main",
+                                    "title":  "TokenBall 管理",
+                                    "url":  "/?view=main",
+                                    "width":  1080,
+                                    "height":  720,
+                                    "minWidth":  900,
+                                    "minHeight":  620,
+                                    "resizable":  true,
+                                    "decorations":  false,
+                                    "center":  true,
+                                    "visible":  false
+                                },
+                                {
+                                    "label":  "hover",
+                                    "title":  "TokenBall 详情",
+                                    "url":  "/?view=hover",
+                                    "width":  520,
+                                    "height":  470,
+                                    "resizable":  false,
+                                    "decorations":  false,
+                                    "transparent":  true,
+                                    "alwaysOnTop":  true,
+                                    "skipTaskbar":  true,
+                                    "shadow":  false,
+                                    "visible":  false
+                                }
+                            ],
+                "security":  {
+                                 "csp":  null
+                             }
+            },
+    "bundle":  {
+                   "active":  true,
+                   "createUpdaterArtifacts":  true,
+                   "targets":  "all",
+                   "icon":  [
+                                "icons/32x32.png",
+                                "icons/128x128.png",
+                                "icons/128x128@2x.png",
+                                "icons/icon.icns",
+                                "icons/icon.ico"
+                            ]
+               },
+    "plugins":  {
+                    "updater":  {
+                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQjZGQkU2QTU2MzQwMjUKUldRbFFHT2w1dnUyODMrTWhCVkNmUGpDNDdlUTM5WmpUNmxnZU5kRlVMQ1RsaTNOMHJjSkcyTnUK",
+                                    "endpoints":  [
+                                                      "https://gitee.com/hongxiaojian/token-ball/releases/download/latest/latest.json",
+                                                      "https://github.com/yedsn/token-ball/releases/latest/download/latest.json"
+                                                  ],
+                                    "windows":  {
+                                                    "installMode":  "passive"
+                                                }
+                                }
+                }
 }
