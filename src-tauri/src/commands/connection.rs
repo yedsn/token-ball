@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fs, path::PathBuf, sync::Arc};
 
 use tauri::{AppHandle, State};
 
@@ -7,7 +7,7 @@ use crate::{
     events,
     error::AppResult,
     providers::{cliproxy::CliProxyClient, qianwen::QianwenClient, volcengine::VolcengineClient},
-    quota::{ConnectionInput, ProviderConnection, ProviderType},
+    quota::{ConfigBackup, ConfigBackupInfo, ConnectionInput, ExportConfigResult, ImportConfigResult, ProviderConnection, ProviderType},
     storage::repository,
 };
 
@@ -28,6 +28,81 @@ pub async fn connection_save(
     repository::save_connection(&state.db, input)
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn connection_export_config_to_file(
+    state: State<'_, Arc<AppState>>,
+    file_path: String,
+) -> Result<ExportConfigResult, String> {
+    let file_path = PathBuf::from(file_path);
+    if let Some(parent) = file_path.parent() {
+        if !parent.is_dir() {
+            return Err("导出位置不存在".to_string());
+        }
+    }
+
+    let backup = repository::export_connections_backup(&state.db)
+        .await
+        .map_err::<String, _>(Into::into)?;
+    let content = serde_json::to_string_pretty(&backup).map_err(|error| error.to_string())?;
+    fs::write(&file_path, content).map_err(|error| error.to_string())?;
+
+    Ok(ExportConfigResult {
+        file_path: file_path.to_string_lossy().to_string(),
+        exported_connections: backup.connections.len(),
+    })
+}
+
+#[tauri::command]
+pub async fn connection_import_config(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    backup: ConfigBackup,
+) -> Result<ImportConfigResult, String> {
+    let result = repository::import_connections_backup(&state.db, backup)
+        .await
+        .map_err::<String, _>(Into::into)?;
+    if let Ok(connections) = repository::list_connections(&state.db).await {
+        events::emit_connections_updated(&app, &connections);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn connection_read_config_backup(file_path: String) -> Result<ConfigBackupInfo, String> {
+    let backup = read_config_backup_file(file_path)?;
+    if backup.schema != "token-ball.connection-backup.v1" {
+        return Err(format!("备份文件版本不受支持：{}", backup.schema));
+    }
+    Ok(ConfigBackupInfo {
+        connection_count: backup.connections.len(),
+    })
+}
+
+#[tauri::command]
+pub async fn connection_import_config_from_file(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    file_path: String,
+) -> Result<ImportConfigResult, String> {
+    let backup = read_config_backup_file(file_path)?;
+    let result = repository::import_connections_backup(&state.db, backup)
+        .await
+        .map_err::<String, _>(Into::into)?;
+    if let Ok(connections) = repository::list_connections(&state.db).await {
+        events::emit_connections_updated(&app, &connections);
+    }
+    Ok(result)
+}
+
+fn read_config_backup_file(file_path: String) -> Result<ConfigBackup, String> {
+    let file_path = PathBuf::from(file_path);
+    if !file_path.is_file() {
+        return Err("备份文件不存在".to_string());
+    }
+    let content = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
+    serde_json::from_str::<ConfigBackup>(&content).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

@@ -48,6 +48,36 @@ export interface ConnectionInput {
   enabled?: boolean;
 }
 
+export interface ConnectionBackupItem {
+  id: string;
+  providerType: ProviderType;
+  displayName: string;
+  baseUrl: string;
+  managementKey: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConnectionBackup {
+  schema: string;
+  exportedAt: string;
+  connections: ConnectionBackupItem[];
+}
+
+export interface ExportConfigResult {
+  filePath: string;
+  exportedConnections: number;
+}
+
+export interface ConfigBackupInfo {
+  connectionCount: number;
+}
+
+export interface ImportConfigResult {
+  importedConnections: number;
+}
+
 export type ProviderType = "cliProxyApi" | "volcengine" | "qianwen";
 
 export interface PluginManifest {

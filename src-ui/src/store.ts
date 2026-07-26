@@ -1,8 +1,11 @@
 import { defineStore } from "pinia";
 import type { ConnectionInput, DisplaySettings, PluginManifest, ProviderConnection, QuotaAccount, QuotaSummary } from "./types";
 import {
+  exportConnectionConfigToFile,
   getDisplaySettings,
   getLatestQuota,
+  importConnectionConfig,
+  importConnectionConfigFromFile,
   listConnections,
   onProviderError,
   onQuotaUpdated,
@@ -14,6 +17,7 @@ import {
   deletePlugin,
   setAppIconStyle,
   refreshAllQuota,
+  readConnectionConfigBackup,
   setConnectionEnabled,
   saveDisplaySettings,
   saveConnection,
@@ -148,6 +152,22 @@ export const useTokenBallStore = defineStore("token-ball", {
       const connection = await saveConnection(input);
       await this.loadConnections();
       return connection;
+    },
+    async exportConnectionConfigToFile(filePath: string) {
+      return exportConnectionConfigToFile(filePath);
+    },
+    async importConnectionConfig(backup: Parameters<typeof importConnectionConfig>[0]) {
+      const result = await importConnectionConfig(backup);
+      await this.loadConnections();
+      return result;
+    },
+    async readConnectionConfigBackup(filePath: string) {
+      return readConnectionConfigBackup(filePath);
+    },
+    async importConnectionConfigFromFile(filePath: string) {
+      const result = await importConnectionConfigFromFile(filePath);
+      await this.loadConnections();
+      return result;
     },
     async loadConnections() {
       try {

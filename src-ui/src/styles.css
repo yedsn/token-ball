@@ -1116,6 +1116,59 @@ body,
   background: rgba(255,255,255,0.07);
 }
 
+.backup-panel {
+  align-self: start;
+  display: grid;
+  gap: 12px;
+}
+
+.backup-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(232,240,238,0.09);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+
+.backup-summary svg {
+  color: #19c37d;
+}
+
+.backup-summary div {
+  display: grid;
+  gap: 5px;
+}
+
+.backup-summary span {
+  color: #8fa19b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 8px;
+  color: #eaf3f0;
+  background: rgba(255,255,255,0.08);
+}
+
+.backup-actions button.primary {
+  color: #06110d;
+  background: #19c37d;
+}
+
 .panel {
   padding: 18px;
 }

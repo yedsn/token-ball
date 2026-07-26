@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ConnectionInput, DisplaySettings, PluginInput, PluginManifest, ProviderConnection, QuotaSummary } from "../types";
+import type { ConfigBackupInfo, ConnectionBackup, ConnectionInput, DisplaySettings, ExportConfigResult, ImportConfigResult, PluginInput, PluginManifest, ProviderConnection, QuotaSummary } from "../types";
 
 export function listConnections(): Promise<ProviderConnection[]> {
   return invoke("connection_list");
@@ -8,6 +8,22 @@ export function listConnections(): Promise<ProviderConnection[]> {
 
 export function saveConnection(input: ConnectionInput): Promise<ProviderConnection> {
   return invoke("connection_save", { input });
+}
+
+export function exportConnectionConfigToFile(filePath: string): Promise<ExportConfigResult> {
+  return invoke("connection_export_config_to_file", { filePath });
+}
+
+export function importConnectionConfig(backup: ConnectionBackup): Promise<ImportConfigResult> {
+  return invoke("connection_import_config", { backup });
+}
+
+export function readConnectionConfigBackup(filePath: string): Promise<ConfigBackupInfo> {
+  return invoke("connection_read_config_backup", { filePath });
+}
+
+export function importConnectionConfigFromFile(filePath: string): Promise<ImportConfigResult> {
+  return invoke("connection_import_config_from_file", { filePath });
 }
 
 export function deleteConnection(id: string): Promise<void> {

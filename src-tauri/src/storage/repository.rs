@@ -6,7 +6,8 @@ use crate::{
     error::{AppError, AppResult},
     quota::{
         build_summary, mask_secret, parse_account_status, parse_connection_status,
-        parse_period_type, parse_provider_type, parse_quota_unit, ConnectionInput,
+        parse_period_type, parse_provider_type, parse_quota_unit, ConnectionBackup, ConnectionInput,
+        ConfigBackup, ImportConfigResult,
         ConnectionStatus, DisplaySettings, ProviderConnection, QuotaAccount, QuotaSummary,
         QuotaWindow, RequestActivity,
     },
@@ -119,6 +120,116 @@ pub async fn list_connections(pool: &SqlitePool) -> AppResult<Vec<ProviderConnec
         }
     }
     Ok(connections)
+}
+
+pub async fn export_connections_backup(pool: &SqlitePool) -> AppResult<ConfigBackup> {
+    let connections = sqlx::query(
+        r#"
+        SELECT id, provider_type, display_name, base_url, management_key, enabled, created_at, updated_at
+        FROM provider_connections
+        ORDER BY updated_at DESC, created_at DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .filter_map(|row| {
+        let id = row.try_get::<String, _>("id").ok()?;
+        let provider_type = row
+            .try_get::<String, _>("provider_type")
+            .ok()
+            .map(|value| parse_provider_type(&value))?;
+        let display_name = row.try_get::<String, _>("display_name").ok()?;
+        let base_url = row.try_get::<String, _>("base_url").ok()?;
+        let management_key = row.try_get::<String, _>("management_key").ok()?;
+        let enabled = row.try_get::<i64, _>("enabled").ok().unwrap_or(1) != 0;
+        let created_at = row
+            .try_get::<String, _>("created_at")
+            .ok()
+            .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+            .map(|value| value.with_timezone(&Utc))?;
+        let updated_at = row
+            .try_get::<String, _>("updated_at")
+            .ok()
+            .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+            .map(|value| value.with_timezone(&Utc))?;
+        Some(ConnectionBackup {
+            id,
+            provider_type,
+            display_name,
+            base_url,
+            management_key,
+            enabled,
+            created_at,
+            updated_at,
+        })
+    })
+    .collect();
+
+    Ok(ConfigBackup {
+        schema: "token-ball.connection-backup.v1".to_string(),
+        exported_at: Utc::now(),
+        connections,
+    })
+}
+
+pub async fn import_connections_backup(
+    pool: &SqlitePool,
+    backup: ConfigBackup,
+) -> AppResult<ImportConfigResult> {
+    let expected_schema = "token-ball.connection-backup.v1";
+    if backup.schema != expected_schema {
+        return Err(AppError::Message(format!("备份文件版本不受支持：{}", backup.schema)));
+    }
+
+    let mut imported = 0usize;
+    let mut keep_ids = Vec::with_capacity(backup.connections.len());
+    for connection in backup.connections {
+        keep_ids.push(connection.id.clone());
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            INSERT INTO provider_connections
+                (id, provider_type, display_name, base_url, management_key, enabled, status, last_synced_at, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)
+            ON CONFLICT(id) DO UPDATE SET
+                provider_type = excluded.provider_type,
+                display_name = excluded.display_name,
+                base_url = excluded.base_url,
+                management_key = excluded.management_key,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(&connection.id)
+        .bind(connection.provider_type.to_string())
+        .bind(connection.display_name)
+        .bind(connection.base_url)
+        .bind(connection.management_key)
+        .bind(connection.enabled as i64)
+        .bind(ConnectionStatus::Unknown.to_string())
+        .bind(connection.created_at.to_rfc3339())
+        .bind(now)
+        .execute(pool)
+        .await?;
+        imported += 1;
+    }
+
+    if !keep_ids.is_empty() {
+        let placeholders = keep_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!("DELETE FROM provider_connections WHERE id NOT IN ({placeholders})");
+        let mut query = sqlx::query(&sql);
+        for id in &keep_ids {
+            query = query.bind(id);
+        }
+        query.execute(pool).await?;
+    } else {
+        sqlx::query("DELETE FROM provider_connections").execute(pool).await?;
+    }
+
+    Ok(ImportConfigResult {
+        imported_connections: imported,
+    })
 }
 
 pub async fn get_connection(pool: &SqlitePool, id: &str) -> AppResult<ProviderConnection> {

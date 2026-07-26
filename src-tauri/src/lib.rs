@@ -52,6 +52,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state)
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             crate::windows::show_window(app, "main");
@@ -83,6 +84,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection_list,
             commands::connection_save,
+            commands::connection_export_config_to_file,
+            commands::connection_import_config,
+            commands::connection_read_config_backup,
+            commands::connection_import_config_from_file,
             commands::connection_delete,
             commands::connection_test,
             commands::connection_set_enabled,

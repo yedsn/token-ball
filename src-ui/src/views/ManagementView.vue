@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Blocks, CheckCircle2, Gauge, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Wifi, X } from "lucide-vue-next";
+import { Blocks, CheckCircle2, Database, Download, Gauge, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
+import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
 import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWindow, toggleMainWindowMaximize } from "../services/tauri";
@@ -9,7 +10,7 @@ import { onShowOverview } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
-type SettingsSection = "appearance" | "plugins";
+type SettingsSection = "appearance" | "plugins" | "backup";
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
 type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
@@ -19,6 +20,7 @@ const settingsSection = ref<SettingsSection>("appearance");
 const orbVisible = ref(true);
 const saving = ref(false);
 const testing = ref(false);
+const backupBusy = ref(false);
 const notice = ref("");
 const iconError = ref("");
 const appIconInputRef = ref<HTMLInputElement | null>(null);
@@ -105,6 +107,12 @@ const pageDescription = computed(() => {
   if (page.value === "instance") return "维护当前 provider 实例的连接信息";
   return "各 Provider 的模型额度与账号状态";
 });
+
+const settingsSectionOptions = computed(() => [
+  { id: "appearance" as const, title: "外观", description: "额度、托盘图标和显示内容", icon: Paintbrush },
+  { id: "plugins" as const, title: "插件", description: "安装、启停和删除扩展", icon: Blocks },
+  { id: "backup" as const, title: "备份", description: "导出或导入实例配置", icon: Database }
+]);
 
 const currentProviderName = computed(() => providerLabel(form.providerType));
 const savedAccessKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasAccessKeyId ? "已保存，留空沿用" : "未保存");
@@ -217,6 +225,7 @@ function defaultConnectionName(providerType: ProviderType) {
 function connectionPayload() {
   if (form.providerType !== "volcengine") {
     if (form.providerType === "qianwen") {
+      const qianwenCookie = extractCookieFromCurl(form.qianwenCookie);
       const qianwenGatewayBaseUrl = form.baseUrl.trim() || form.qianwenGatewayBaseUrl.trim() || "https://platform-home.qianwenai.com";
       form.baseUrl = qianwenGatewayBaseUrl;
       form.qianwenGatewayBaseUrl = qianwenGatewayBaseUrl;
@@ -228,7 +237,7 @@ function connectionPayload() {
         managementKey: JSON.stringify({
           qianwenProductCode: form.qianwenProductCode.trim() || "token-plan",
           qianwenGatewayBaseUrl,
-          qianwenCookie: form.qianwenCookie.trim()
+          qianwenCookie
         })
       };
     }
@@ -237,6 +246,7 @@ function connectionPayload() {
   const current = currentConnection.value;
   const accessKeyId = form.volcengineAccessKeyId.trim();
   const secretAccessKey = form.volcengineSecretAccessKey.trim();
+  const codingWebCookie = extractCookieFromCurl(form.volcengineCodingWebCookie);
   return {
     id: form.id || undefined,
     providerType: form.providerType,
@@ -253,9 +263,68 @@ function connectionPayload() {
       codingProjectName: form.volcengineCodingProjectName.trim(),
       codingSeatId: form.volcengineCodingSeatId.trim(),
       codingWebBaseUrl: form.volcengineCodingWebBaseUrl.trim() || "https://console.volcengine.com/api/top",
-      codingWebCookie: form.volcengineCodingWebCookie.trim()
+      codingWebCookie
     })
   };
+}
+
+function extractCookieFromCurl(input: string) {
+  const value = input.trim();
+  if (!value) return "";
+  const normalized = value.replace(/\\\r?\n/g, " ").replace(/\^\r?\n/g, " ");
+  const directHeader = normalized.match(/^cookie\s*:\s*([\s\S]+)$/i);
+  if (directHeader?.[1]) return cleanCookieValue(directHeader[1]);
+
+  const headerCookie = extractCookieHeader(normalized);
+  if (headerCookie) return headerCookie;
+
+  const cookieArg = extractCurlCookieArgument(normalized);
+  if (cookieArg) return cookieArg;
+
+  if (/^curl\b/i.test(value)) return "";
+  return cleanCookieValue(value);
+}
+
+function extractCookieHeader(curlText: string) {
+  for (const header of extractCurlOptionValues(curlText, ["-H", "--header"])) {
+    const match = header.match(/^cookie\s*:\s*([\s\S]+)$/i);
+    if (match?.[1]) return cleanCookieValue(match[1]);
+  }
+  return "";
+}
+
+function extractCurlCookieArgument(curlText: string) {
+  for (const cookie of extractCurlOptionValues(curlText, ["-b", "--cookie"])) {
+    const cleaned = cleanCookieValue(cookie);
+    if (cleaned.includes("=")) return cleaned;
+  }
+  return "";
+}
+
+function extractCurlOptionValues(curlText: string, optionNames: string[]) {
+  const values: string[] = [];
+  for (const optionName of optionNames) {
+    const escapedOption = optionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?:^|\\s)${escapedOption}(?:=|\\s+)\\$?(["'])([\\s\\S]*?)\\1`, "gi");
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(curlText))) {
+      values.push(decodeCurlCopiedValue(match[2]));
+    }
+  }
+  return values;
+}
+
+function decodeCurlCopiedValue(value: string) {
+  return value.replace(/\\r/g, "\r").replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\(["'\\])/g, "$1");
+}
+
+function cleanCookieValue(value: string) {
+  return value.trim().replace(/^cookie\s*:\s*/i, "").replace(/^\$?(["'])([\s\S]*)\1$/, "$2").trim();
+}
+
+function normalizeCookieField(field: "volcengineCodingWebCookie" | "qianwenCookie") {
+  const extracted = extractCookieFromCurl(form[field]);
+  if (extracted) form[field] = extracted;
 }
 
 async function save() {
@@ -325,6 +394,59 @@ async function removeCurrent() {
   form.qianwenCookie = "";
   notice.value = "连接已删除";
   page.value = "overview";
+}
+
+async function exportConfigBackup() {
+  backupBusy.value = true;
+  notice.value = "";
+  try {
+    const filePath = await saveDialog({
+      title: "导出配置",
+      defaultPath: defaultBackupFileName(),
+      filters: [{ name: "TokenBall 配置", extensions: ["json"] }]
+    });
+    if (!filePath) return;
+    const result = await store.exportConnectionConfigToFile(filePath);
+    notice.value = `已导出 ${result.exportedConnections} 个实例配置到：${result.filePath}`;
+  } catch (error) {
+    notice.value = `导出失败：${String(error)}`;
+  } finally {
+    backupBusy.value = false;
+  }
+}
+
+async function importConfigBackup() {
+  backupBusy.value = true;
+  notice.value = "";
+  try {
+    const filePath = await open({
+      title: "导入配置",
+      multiple: false,
+      directory: false,
+      filters: [{ name: "TokenBall 配置", extensions: ["json"] }]
+    });
+    if (!filePath || Array.isArray(filePath)) return;
+    const backup = await store.readConnectionConfigBackup(filePath);
+    const confirmed = window.confirm(`导入后会用备份里的 ${backup.connectionCount} 个实例配置覆盖当前实例配置，是否继续？`);
+    if (!confirmed) return;
+    const result = await store.importConnectionConfigFromFile(filePath);
+    form.id = "";
+    form.managementKey = "";
+    form.volcengineAccessKeyId = "";
+    form.volcengineSecretAccessKey = "";
+    form.volcengineCodingWebCookie = "";
+    form.qianwenCookie = "";
+    notice.value = `已导入 ${result.importedConnections} 个实例配置`;
+  } catch (error) {
+    notice.value = `导入失败：${String(error)}`;
+  } finally {
+    backupBusy.value = false;
+  }
+}
+
+function defaultBackupFileName() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `token-ball-config-${timestamp}.json`;
 }
 
 function quotaLabel(account: QuotaAccount) {
@@ -498,8 +620,8 @@ function providerHelp(providerType: ProviderType) {
 
 function canTestConnection() {
   if (currentConnection.value) return true;
-  if (form.providerType === "qianwen") return Boolean(form.qianwenCookie.trim());
-  if (form.providerType === "volcengine" && form.volcengineChannel === "web") return Boolean(form.volcengineCodingWebCookie.trim());
+  if (form.providerType === "qianwen") return Boolean(extractCookieFromCurl(form.qianwenCookie));
+  if (form.providerType === "volcengine" && form.volcengineChannel === "web") return Boolean(extractCookieFromCurl(form.volcengineCodingWebCookie));
   if (form.providerType === "volcengine") return Boolean(form.volcengineAccessKeyId.trim() && form.volcengineSecretAccessKey.trim());
   return Boolean(form.managementKey.trim());
 }
@@ -852,13 +974,16 @@ async function startTitlebarDrag(event: PointerEvent) {
 
       <section v-else-if="page === 'orbSettings'" class="settings-page-shell">
         <aside class="settings-subnav">
-          <button type="button" class="settings-subnav-item" :class="{ active: settingsSection === 'appearance' }" @click="openSettingsSection('appearance')">
-            <Paintbrush :size="16" />
-            <span><b>外观</b><small>额度、托盘图标和显示内容</small></span>
-          </button>
-          <button type="button" class="settings-subnav-item" :class="{ active: settingsSection === 'plugins' }" @click="openSettingsSection('plugins')">
-            <Blocks :size="16" />
-            <span><b>插件</b><small>安装、启停和删除扩展</small></span>
+          <button
+            v-for="section in settingsSectionOptions"
+            :key="section.id"
+            type="button"
+            class="settings-subnav-item"
+            :class="{ active: settingsSection === section.id }"
+            @click="openSettingsSection(section.id)"
+          >
+            <component :is="section.icon" :size="16" />
+            <span><b>{{ section.title }}</b><small>{{ section.description }}</small></span>
           </button>
         </aside>
 
@@ -1037,6 +1162,23 @@ async function startTitlebarDrag(event: PointerEvent) {
             <span>{{ plugin.name }}</span><strong>{{ plugin.enabled ? '已启用' : '已停用' }}</strong><small>{{ plugin.permissions.join('、') || '无额外权限' }}</small>
           </div>
         </section>
+
+        <section v-if="settingsSection === 'backup'" class="panel backup-panel">
+          <h2>配置备份</h2>
+          <div class="backup-summary">
+            <Database :size="18" />
+            <div>
+              <strong>实例配置</strong>
+              <span>包含 Provider、实例名称、地址、启用状态、管理 Key、AccessKey 和 Cookie；不包含额度缓存、账号用量和历史快照。</span>
+            </div>
+          </div>
+          <div class="backup-actions">
+            <button class="primary" type="button" :disabled="backupBusy" @click="exportConfigBackup"><Download :size="16" />导出配置</button>
+            <button type="button" :disabled="backupBusy" @click="importConfigBackup"><Upload :size="16" />导入配置</button>
+          </div>
+          <p class="setting-hint">导出配置会打开另存为窗口，可以指定保存位置和文件名；导入配置会选择一个已有 JSON 文件并覆盖当前实例配置。备份文件含敏感密钥，请只保存在可信位置。</p>
+          <p v-if="notice" class="notice">{{ notice }}</p>
+        </section>
       </section>
 
       <section v-else class="content-grid instance-grid">
@@ -1073,13 +1215,13 @@ async function startTitlebarDrag(event: PointerEvent) {
             <template v-else>
               <label>控制台 API Host<input v-model="form.volcengineCodingWebBaseUrl" placeholder="https://console.volcengine.com/api/top" /></label>
               <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="默认 default" /></label>
-              <label>控制台 Cookie<textarea v-model="form.volcengineCodingWebCookie" autocomplete="off" placeholder="从 console.volcengine.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedWebCookieLabel }}</small></label>
+              <label>控制台 Cookie<textarea v-model="form.volcengineCodingWebCookie" autocomplete="off" placeholder="可粘贴完整 curl 请求，或只粘贴 console.volcengine.com 请求里的 Cookie；保存后不会回显" @blur="normalizeCookieField('volcengineCodingWebCookie')"></textarea><small>{{ savedWebCookieLabel }}</small></label>
             </template>
           </template>
           <template v-else-if="form.providerType === 'qianwen'">
             <label>ProductCode<input v-model="form.qianwenProductCode" placeholder="token-plan" /></label>
             <label>控制台网关<input v-model="form.qianwenGatewayBaseUrl" placeholder="https://platform-home.qianwenai.com" /></label>
-            <label>控制台 Cookie<textarea v-model="form.qianwenCookie" autocomplete="off" placeholder="从 platform.qianwenai.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedQianwenCookieLabel }}</small></label>
+            <label>控制台 Cookie<textarea v-model="form.qianwenCookie" autocomplete="off" placeholder="可粘贴完整 curl 请求，或只粘贴 platform.qianwenai.com 请求里的 Cookie；保存后不会回显" @blur="normalizeCookieField('qianwenCookie')"></textarea><small>{{ savedQianwenCookieLabel }}</small></label>
           </template>
           <label v-else>管理 Key<input v-model="form.managementKey" type="password" autocomplete="off" /></label>
           <p class="muted">{{ providerHelp(form.providerType) }}</p>

@@ -103,6 +103,46 @@ pub struct ConnectionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ConnectionBackup {
+    pub id: String,
+    pub provider_type: ProviderType,
+    pub display_name: String,
+    pub base_url: String,
+    pub management_key: String,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigBackup {
+    pub schema: String,
+    pub exported_at: DateTime<Utc>,
+    pub connections: Vec<ConnectionBackup>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportConfigResult {
+    pub file_path: String,
+    pub exported_connections: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigBackupInfo {
+    pub connection_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConfigResult {
+    pub imported_connections: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QuotaAccount {
     pub id: String,
     pub connection_id: String,
