@@ -646,7 +646,7 @@ body,
   background: #c93632;
 }
 
-aside {
+.management-shell > aside {
   grid-row: 2;
   min-height: 0;
   overflow-y: auto;
@@ -1506,7 +1506,7 @@ button:disabled {
     overflow-y: auto;
   }
 
-  aside {
+  .management-shell > aside {
     border-right: 0;
     border-bottom: 1px solid rgba(232,240,238,0.08);
   }
