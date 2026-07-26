@@ -315,7 +315,7 @@ export const useTokenBallStore = defineStore("token-ball", {
       }
     },
     applyUpdaterStatus(info: UpdateInfo) {
-      this.updater.currentVersion = info.currentVersion;
+      this.updater.currentVersion = info.currentVersion || this.updater.currentVersion || __APP_VERSION__;
       this.updater.available = info.available;
       this.updater.version = info.version ?? "";
       this.updater.notes = info.notes ?? "";

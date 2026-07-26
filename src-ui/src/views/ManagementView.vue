@@ -71,6 +71,7 @@ const providerGroups = computed(() => [
 const currentConnection = computed(() => store.connections.find((connection) => connection.id === form.id) ?? null);
 const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.enabledAccounts : []));
 const enabledCustomItems = computed(() => store.displaySettings.customItems.filter((item) => item.enabled));
+const appVersionLabel = computed(() => store.updater.currentVersion || __APP_VERSION__);
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
@@ -1193,7 +1194,7 @@ async function startTitlebarDrag(event: PointerEvent) {
             <Info :size="18" />
             <div>
               <strong>TokenBall</strong>
-              <span>当前版本 v{{ store.updater.currentVersion || '—' }}</span>
+              <span>当前版本 v{{ appVersionLabel }}</span>
             </div>
           </div>
           <div class="about-actions">

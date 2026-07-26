@@ -9,6 +9,7 @@ static INSTALL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 /// 更新检查结果，前端据此渲染“关于/检查更新”面板。
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub current_version: String,
     pub available: bool,
@@ -34,6 +35,7 @@ impl UpdateInfo {
 
 /// 下载进度事件负载。
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DownloadProgress {
     pub downloaded: u64,
     pub total: Option<u64>,
