@@ -67,17 +67,24 @@ async fn resolve_management_key(
     if input_secret.trim().is_empty() {
         return Ok(existing);
     }
-    if !matches!(provider_type, crate::quota::ProviderType::Volcengine) {
-        return Ok(input_secret.to_string());
+    match provider_type {
+        crate::quota::ProviderType::Volcengine => merge_secret_fields(
+            &existing,
+            input_secret,
+            &["accessKeyId", "secretAccessKey", "codingWebCookie"],
+        ),
+        crate::quota::ProviderType::Qianwen => {
+            merge_secret_fields(&existing, input_secret, &["qianwenCookie"])
+        }
+        crate::quota::ProviderType::CliProxyApi => Ok(input_secret.to_string()),
     }
-    merge_volcengine_secret(&existing, input_secret)
 }
 
-fn merge_volcengine_secret(existing: &str, input_secret: &str) -> AppResult<String> {
+fn merge_secret_fields(existing: &str, input_secret: &str, keys: &[&str]) -> AppResult<String> {
     let mut input: serde_json::Value =
         serde_json::from_str(input_secret).map_err(|error| AppError::Message(error.to_string()))?;
     let existing: serde_json::Value = serde_json::from_str(existing).unwrap_or_default();
-    for key in ["accessKeyId", "secretAccessKey", "codingWebCookie"] {
+    for key in keys {
         let is_empty = input
             .get(key)
             .and_then(|value| value.as_str())
@@ -85,7 +92,7 @@ fn merge_volcengine_secret(existing: &str, input_secret: &str) -> AppResult<Stri
             .unwrap_or(true);
         if is_empty {
             if let Some(value) = existing.get(key).and_then(|value| value.as_str()) {
-                input[key] = serde_json::Value::String(value.to_string());
+                input[*key] = serde_json::Value::String(value.to_string());
             }
         }
     }
@@ -719,7 +726,7 @@ fn provider_config_hint(
     provider_type: &crate::quota::ProviderType,
     raw_secret: &str,
 ) -> Option<crate::quota::ProviderConfigHint> {
-    if !matches!(provider_type, crate::quota::ProviderType::Volcengine) {
+    if !matches!(provider_type, crate::quota::ProviderType::Volcengine | crate::quota::ProviderType::Qianwen) {
         return None;
     }
     let value: serde_json::Value = serde_json::from_str(raw_secret).ok()?;
@@ -768,6 +775,19 @@ fn provider_config_hint(
             .map(|value| value.to_string()),
         has_coding_web_cookie: value
             .get("codingWebCookie")
+            .and_then(|value| value.as_str())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false),
+        qianwen_product_code: value
+            .get("qianwenProductCode")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        qianwen_gateway_base_url: value
+            .get("qianwenGatewayBaseUrl")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        has_qianwen_cookie: value
+            .get("qianwenCookie")
             .and_then(|value| value.as_str())
             .map(|value| !value.trim().is_empty())
             .unwrap_or(false),

@@ -40,7 +40,10 @@ const form = reactive({
   volcengineCodingProjectName: "default",
   volcengineCodingSeatId: "",
   volcengineCodingWebBaseUrl: "https://console.volcengine.com/api/top",
-  volcengineCodingWebCookie: ""
+  volcengineCodingWebCookie: "",
+  qianwenProductCode: "token-plan",
+  qianwenGatewayBaseUrl: "https://platform-home.qianwenai.com",
+  qianwenCookie: ""
 });
 
 const providerGroups = computed(() => [
@@ -55,14 +58,20 @@ const providerGroups = computed(() => [
     title: "火山引擎",
     providerType: "volcengine" as ProviderType,
     connections: store.connections.filter((connection) => connection.providerType === "volcengine")
+  },
+  {
+    id: "qianwen",
+    title: "千问",
+    providerType: "qianwen" as ProviderType,
+    connections: store.connections.filter((connection) => connection.providerType === "qianwen")
   }
 ]);
 
 const currentConnection = computed(() => store.connections.find((connection) => connection.id === form.id) ?? null);
-const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.summary.accounts : []));
+const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.enabledAccounts : []));
 const enabledCustomItems = computed(() => store.displaySettings.customItems.filter((item) => item.enabled));
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
-  const rows: BalanceRankingRow[] = store.summary.accounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
+  const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
     const leftTime = balanceResetTime(left);
     const rightTime = balanceResetTime(right);
@@ -77,9 +86,9 @@ const groupedAccounts = computed(() => {
   return providerGroups.value.map((provider) => ({
     id: provider.id,
     title: provider.title,
-    groups: provider.connections.map((connection) => ({
+    groups: provider.connections.filter((connection) => connection.enabled).map((connection) => ({
       connection,
-      accounts: store.summary.accounts.filter((account) => account.connectionId === connection.id)
+      accounts: store.enabledAccounts.filter((account) => account.connectionId === connection.id)
     }))
   })).filter((provider) => provider.groups.length > 0);
 });
@@ -101,6 +110,7 @@ const currentProviderName = computed(() => providerLabel(form.providerType));
 const savedAccessKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasAccessKeyId ? "已保存，留空沿用" : "未保存");
 const savedSecretKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasSecretAccessKey ? "已保存，留空沿用" : "未保存");
 const savedWebCookieLabel = computed(() => currentConnection.value?.providerConfigHint?.hasCodingWebCookie ? "已保存，留空沿用" : "未保存");
+const savedQianwenCookieLabel = computed(() => currentConnection.value?.providerConfigHint?.hasQianwenCookie ? "已保存，留空沿用" : "未保存");
 
 const totalRemainingLabel = computed(() => {
   const percent = store.totalRemainingPercent;
@@ -109,6 +119,7 @@ const totalRemainingLabel = computed(() => {
 });
 
 const equivalentLabel = computed(() => `${store.totalEquivalentAccounts.toFixed(2)} 账号`);
+const enabledAccountCountLabel = computed(() => `${store.enabledAccounts.length} / ${store.summary.totalAccounts}`);
 const appIconOptions = computed(() => [
   { id: "meter" as const, label: "V3 余量仪表", description: "用于窗口、任务栏和安装包的默认程序图标" },
   { id: "orb" as const, label: "额度", description: "使用与桌面悬浮窗一致的绿色额度图标" },
@@ -166,6 +177,9 @@ function selectConnection(connection: ProviderConnection) {
   form.volcengineCodingSeatId = connection.providerConfigHint?.codingSeatId || "";
   form.volcengineCodingWebBaseUrl = connection.providerConfigHint?.codingWebBaseUrl || "https://console.volcengine.com/api/top";
   form.volcengineCodingWebCookie = "";
+  form.qianwenProductCode = connection.providerConfigHint?.qianwenProductCode || "token-plan";
+  form.qianwenGatewayBaseUrl = connection.baseUrl;
+  form.qianwenCookie = "";
   notice.value = "";
   page.value = "instance";
 }
@@ -173,8 +187,8 @@ function selectConnection(connection: ProviderConnection) {
 function newConnection(providerType: ProviderType = "cliProxyApi") {
   form.id = "";
   form.providerType = providerType;
-  form.displayName = providerType === "volcengine" ? `火山引擎 ${store.connections.length + 1}` : `CLIProxyAPI ${store.connections.length + 1}`;
-  form.baseUrl = providerType === "volcengine" ? "https://open.volcengineapi.com" : "http://127.0.0.1:8317";
+  form.displayName = defaultConnectionName(providerType);
+  form.baseUrl = providerType === "volcengine" ? "https://open.volcengineapi.com" : providerType === "qianwen" ? "https://platform-home.qianwenai.com" : "http://127.0.0.1:8317";
   form.managementKey = "";
   form.volcengineAccessKeyId = "";
   form.volcengineSecretAccessKey = "";
@@ -187,12 +201,37 @@ function newConnection(providerType: ProviderType = "cliProxyApi") {
   form.volcengineCodingSeatId = "";
   form.volcengineCodingWebBaseUrl = "https://console.volcengine.com/api/top";
   form.volcengineCodingWebCookie = "";
+  form.qianwenProductCode = "token-plan";
+  form.qianwenGatewayBaseUrl = form.baseUrl;
+  form.qianwenCookie = "";
   notice.value = "";
   page.value = "instance";
 }
 
+function defaultConnectionName(providerType: ProviderType) {
+  if (providerType === "volcengine") return `火山引擎 ${store.connections.length + 1}`;
+  if (providerType === "qianwen") return `千问 ${store.connections.length + 1}`;
+  return `CLIProxyAPI ${store.connections.length + 1}`;
+}
+
 function connectionPayload() {
   if (form.providerType !== "volcengine") {
+    if (form.providerType === "qianwen") {
+      const qianwenGatewayBaseUrl = form.baseUrl.trim() || form.qianwenGatewayBaseUrl.trim() || "https://platform-home.qianwenai.com";
+      form.baseUrl = qianwenGatewayBaseUrl;
+      form.qianwenGatewayBaseUrl = qianwenGatewayBaseUrl;
+      return {
+        id: form.id || undefined,
+        providerType: form.providerType,
+        displayName: form.displayName,
+        baseUrl: qianwenGatewayBaseUrl,
+        managementKey: JSON.stringify({
+          qianwenProductCode: form.qianwenProductCode.trim() || "token-plan",
+          qianwenGatewayBaseUrl,
+          qianwenCookie: form.qianwenCookie.trim()
+        })
+      };
+    }
     return { id: form.id || undefined, providerType: form.providerType, displayName: form.displayName, baseUrl: form.baseUrl, managementKey: form.managementKey };
   }
   const current = currentConnection.value;
@@ -237,6 +276,9 @@ async function save() {
     form.volcengineCodingProjectName = connection.providerConfigHint?.codingProjectName || form.volcengineCodingProjectName;
     form.volcengineCodingSeatId = connection.providerConfigHint?.codingSeatId || form.volcengineCodingSeatId;
     form.volcengineCodingWebBaseUrl = connection.providerConfigHint?.codingWebBaseUrl || form.volcengineCodingWebBaseUrl;
+    form.qianwenCookie = "";
+    form.qianwenProductCode = connection.providerConfigHint?.qianwenProductCode || form.qianwenProductCode;
+    form.qianwenGatewayBaseUrl = connection.baseUrl || connection.providerConfigHint?.qianwenGatewayBaseUrl || form.qianwenGatewayBaseUrl;
     notice.value = "连接已保存";
     await store.refresh();
     return connection;
@@ -253,10 +295,12 @@ async function test() {
   notice.value = "";
   try {
     const hasVolcengineSecret = form.providerType === "volcengine" && (form.volcengineAccessKeyId.trim() || form.volcengineSecretAccessKey.trim() || form.volcengineCodingWebCookie.trim());
-    const connection = form.managementKey.trim() || hasVolcengineSecret ? await save() : currentConnection.value;
+    const hasQianwenSecret = form.providerType === "qianwen" && form.qianwenCookie.trim();
+    const connection = form.managementKey.trim() || hasVolcengineSecret || hasQianwenSecret ? await save() : currentConnection.value;
     const id = connection?.id;
     if (!id) return;
     await store.testCliProxyConnection(id);
+    await store.refresh();
     notice.value = "连接测试成功";
   } catch (error) {
     notice.value = String(error);
@@ -276,6 +320,9 @@ async function removeCurrent() {
   form.volcengineCodingWebCookie = "";
   form.volcengineCodingProjectName = "";
   form.volcengineCodingSeatId = "";
+  form.qianwenProductCode = "";
+  form.qianwenGatewayBaseUrl = "";
+  form.qianwenCookie = "";
   notice.value = "连接已删除";
   page.value = "overview";
 }
@@ -439,16 +486,19 @@ function windowClass(window: QuotaWindow) {
 
 function providerLabel(providerType: ProviderType) {
   if (providerType === "volcengine") return "火山引擎";
+  if (providerType === "qianwen") return "千问";
   return "CLIProxyAPI";
 }
 
 function providerHelp(providerType: ProviderType) {
   if (providerType === "volcengine") return "官方渠道使用 Access Key 查询 OpenAPI；页面渠道使用控制台 Cookie 查询 Coding Plan 用量。可以按计划类型拆成多个实例。";
+  if (providerType === "qianwen") return "优先使用千问官方控制台 API 查询 Token Plan 主套餐和加油包额度；需要从 platform.qianwenai.com 登录态请求里复制 Cookie。";
   return "这里需要 remote-management.secret-key 或 MANAGEMENT_PASSWORD，不是普通 API Key。";
 }
 
 function canTestConnection() {
   if (currentConnection.value) return true;
+  if (form.providerType === "qianwen") return Boolean(form.qianwenCookie.trim());
   if (form.providerType === "volcengine" && form.volcengineChannel === "web") return Boolean(form.volcengineCodingWebCookie.trim());
   if (form.providerType === "volcengine") return Boolean(form.volcengineAccessKeyId.trim() && form.volcengineSecretAccessKey.trim());
   return Boolean(form.managementKey.trim());
@@ -582,6 +632,7 @@ function resetLabel(value?: string | null) {
 }
 
 function activityLabel(account: QuotaAccount) {
+  if (account.externalId.startsWith("qianwen-token-plan") && account.windows.length === 0) return "千问控制台 API 已连通，但未返回 Token Plan 额度。";
   if (account.externalId.startsWith("volcengine-coding-plan") && account.windows.length === 0) return "未返回 Coding Plan 用量明细。";
   const latest = account.recentRequests?.[account.recentRequests.length - 1];
   if (latest) return `${latest.time} 成功 ${latest.success} / 失败 ${latest.failed}`;
@@ -743,7 +794,7 @@ async function startTitlebarDrag(event: PointerEvent) {
             <h2>模型额度</h2>
             <p v-if="store.hasConnection && store.summary.lowestRemainingPercent === null" class="muted quota-note">当前 CLIProxyAPI 管理接口未返回真实余量百分比，下面展示账号可用性和请求活动。</p>
             <div v-if="!store.hasConnection" class="empty-state">保存 CLIProxyAPI 连接后开始同步账号。</div>
-            <div v-else-if="store.summary.accounts.length === 0" class="empty-state">已连接，点击立即刷新同步账号；如果仍为空，请查看测试返回内容。</div>
+            <div v-else-if="store.enabledAccounts.length === 0" class="empty-state">暂无启用实例账号数据；如需展示，请先启用对应实例。</div>
             <div v-else class="connection-groups">
               <section v-for="provider in groupedAccounts" :key="provider.id" class="provider-account-group">
                 <h3>{{ provider.title }}</h3>
@@ -783,7 +834,7 @@ async function startTitlebarDrag(event: PointerEvent) {
               <span>总额度</span><strong>{{ totalRemainingLabel }}</strong><small>{{ equivalentLabel }}</small>
             </div>
             <div v-if="store.displaySettings.showAvailableAccounts" class="preview-line">
-              <span>可用账号</span><strong>{{ store.summary.availableAccounts }} / {{ store.summary.totalAccounts }}</strong><small>账号状态</small>
+              <span>启用账号</span><strong>{{ enabledAccountCountLabel }}</strong><small>启用实例 / 全部账号</small>
             </div>
             <div v-if="store.displaySettings.showConnectionStatus" class="preview-line">
               <span>连接状态</span><strong>{{ store.summary.status }}</strong><small>CLIProxyAPI</small>
@@ -936,7 +987,7 @@ async function startTitlebarDrag(event: PointerEvent) {
             <span>总额度</span><strong>{{ totalRemainingLabel }}</strong><small>{{ equivalentLabel }}</small>
           </div>
           <div v-if="store.displaySettings.showAvailableAccounts" class="preview-line">
-            <span>可用账号</span><strong>{{ store.summary.availableAccounts }} / {{ store.summary.totalAccounts }}</strong><small>账号状态</small>
+              <span>启用账号</span><strong>{{ enabledAccountCountLabel }}</strong><small>启用实例 / 全部账号</small>
           </div>
           <div v-if="store.displaySettings.showConnectionStatus" class="preview-line">
             <span>连接状态</span><strong>{{ store.summary.status }}</strong><small>CLIProxyAPI</small>
@@ -995,10 +1046,11 @@ async function startTitlebarDrag(event: PointerEvent) {
             <select v-model="form.providerType" :disabled="Boolean(form.id)">
               <option value="cliProxyApi">CLIProxyAPI</option>
               <option value="volcengine">火山引擎</option>
+              <option value="qianwen">千问</option>
             </select>
           </label>
           <label>显示名称<input v-model="form.displayName" /></label>
-          <label v-if="form.providerType !== 'volcengine' || form.volcengineChannel === 'official'">{{ form.providerType === 'volcengine' ? 'OpenAPI Host' : '服务地址' }}<input v-model="form.baseUrl" :placeholder="form.providerType === 'volcengine' ? 'https://open.volcengineapi.com' : ''" /></label>
+          <label v-if="form.providerType !== 'volcengine' || form.volcengineChannel === 'official'">{{ form.providerType === 'volcengine' ? 'OpenAPI Host' : form.providerType === 'qianwen' ? '控制台 API Host' : '服务地址' }}<input v-model="form.baseUrl" :placeholder="form.providerType === 'volcengine' ? 'https://open.volcengineapi.com' : form.providerType === 'qianwen' ? 'https://platform-home.qianwenai.com' : ''" /></label>
           <template v-if="form.providerType === 'volcengine'">
             <label>渠道类型
               <select v-model="form.volcengineChannel">
@@ -1023,6 +1075,11 @@ async function startTitlebarDrag(event: PointerEvent) {
               <label>Coding ProjectName<input v-model="form.volcengineCodingProjectName" placeholder="默认 default" /></label>
               <label>控制台 Cookie<textarea v-model="form.volcengineCodingWebCookie" autocomplete="off" placeholder="从 console.volcengine.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedWebCookieLabel }}</small></label>
             </template>
+          </template>
+          <template v-else-if="form.providerType === 'qianwen'">
+            <label>ProductCode<input v-model="form.qianwenProductCode" placeholder="token-plan" /></label>
+            <label>控制台网关<input v-model="form.qianwenGatewayBaseUrl" placeholder="https://platform-home.qianwenai.com" /></label>
+            <label>控制台 Cookie<textarea v-model="form.qianwenCookie" autocomplete="off" placeholder="从 platform.qianwenai.com 登录态请求里复制 Cookie；保存后不会回显"></textarea><small>{{ savedQianwenCookieLabel }}</small></label>
           </template>
           <label v-else>管理 Key<input v-model="form.managementKey" type="password" autocomplete="off" /></label>
           <p class="muted">{{ providerHelp(form.providerType) }}</p>

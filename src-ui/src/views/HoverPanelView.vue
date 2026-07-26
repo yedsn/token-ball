@@ -18,9 +18,10 @@ let leaveTimer: number | undefined;
 let unlistenOrbEnter: UnlistenFn | undefined;
 let unlistenOrbLeave: UnlistenFn | undefined;
 let unlistenFocusChanged: UnlistenFn | undefined;
+const panelHideDelayMs = 900;
 
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
-  const rows: BalanceRankingRow[] = store.summary.accounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
+  const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
     const leftTime = balanceResetTime(left);
     const rightTime = balanceResetTime(right);
@@ -39,6 +40,8 @@ const totalBalanceClass = computed(() => {
   if (percent < 60) return "warning";
   return "healthy";
 });
+
+const enabledAccountCountLabel = computed(() => `${store.enabledAccounts.length} / ${store.summary.totalAccounts}`);
 
 function accountPercentValue(account: QuotaAccount) {
   const window = account.windows.find((item) => item.id === account.criticalWindowId);
@@ -216,10 +219,19 @@ function showDelayed() {
   if (leaveTimer) window.clearTimeout(leaveTimer);
 }
 
-function showFromOrb() {
+async function showFromOrb() {
   visible.value = true;
   if (leaveTimer) window.clearTimeout(leaveTimer);
+  await store.loadConnections();
   resetListScroll();
+}
+
+async function refreshPanel() {
+  try {
+    await store.refresh();
+  } finally {
+    await store.loadConnections();
+  }
 }
 
 function resetListScroll() {
@@ -233,15 +245,14 @@ function hideDelayed() {
   if (leaveTimer) window.clearTimeout(leaveTimer);
   leaveTimer = window.setTimeout(() => {
     hideNow();
-  }, 900);
+  }, panelHideDelayMs);
 }
 
 function hideAfterOrbLeave() {
-  if (pointerInsidePanel.value) return;
   if (leaveTimer) window.clearTimeout(leaveTimer);
   leaveTimer = window.setTimeout(() => {
     if (!pointerInsidePanel.value) hideNow();
-  }, 260);
+  }, panelHideDelayMs);
 }
 
 function hideNow() {
@@ -277,13 +288,15 @@ onUnmounted(() => {
       <div class="hero-copy">
         <span>额度</span>
         <strong>{{ typeof store.totalRemainingPercent === 'number' ? Math.round(store.totalRemainingPercent) + '%' : store.percentLabel }}</strong>
-        <small>{{ store.summary.availableAccounts }} / {{ store.summary.totalAccounts }} 可用账号</small>
+        <small>{{ enabledAccountCountLabel }} 启用账号</small>
       </div>
-      <RefreshCw :size="16" :class="{ spin: store.refreshing }" />
+      <button class="hover-refresh" type="button" title="刷新" :disabled="store.refreshing" @click="refreshPanel">
+        <RefreshCw :size="16" :class="{ spin: store.refreshing }" />
+      </button>
     </header>
 
     <section v-if="!store.hasConnection" class="empty-panel">尚未配置 CLIProxyAPI</section>
-    <section v-else-if="store.summary.accounts.length === 0" class="empty-panel">已连接，暂无账号数据</section>
+    <section v-else-if="store.enabledAccounts.length === 0" class="empty-panel">已连接，暂无启用实例账号数据</section>
     <section v-else class="hover-list-wrap">
       <div v-if="store.displaySettings.showTotalRemaining" class="hover-summary-line">
         <span>等效剩余</span>

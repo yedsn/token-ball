@@ -40,6 +40,8 @@ pub fn build_summary(
         .map(|account| {
             if account.external_id.starts_with("volcengine-") {
                 ProviderType::Volcengine
+            } else if account.external_id.starts_with("qianwen-") {
+                ProviderType::Qianwen
             } else {
                 ProviderType::CliProxyApi
             }

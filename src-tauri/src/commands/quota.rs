@@ -9,6 +9,7 @@ use crate::{
     events,
     providers::{
         cliproxy::{mapper::map_auth_files, wham::enrich_codex_quotas, CliProxyClient},
+        qianwen::QianwenClient,
         volcengine::VolcengineClient,
     },
     quota::{build_summary, ConnectionStatus, ProviderType, QuotaSummary},
@@ -95,6 +96,10 @@ async fn sync_connection(state: &Arc<AppState>, connection_id: &str) -> AppResul
         }
         ProviderType::Volcengine => {
             let client = VolcengineClient::new(&connection.base_url, &key)?;
+            client.account_snapshot(&connection.id).await?
+        }
+        ProviderType::Qianwen => {
+            let client = QianwenClient::new(&connection.base_url, &key)?;
             client.account_snapshot(&connection.id).await?
         }
     };

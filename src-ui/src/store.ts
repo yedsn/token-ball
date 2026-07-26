@@ -9,6 +9,7 @@ import {
   onRefreshCompleted,
   onRefreshStarted,
   onDisplaySettingsUpdated,
+  onConnectionsUpdated,
   addPlugin,
   deletePlugin,
   setAppIconStyle,
@@ -73,18 +74,25 @@ export const useTokenBallStore = defineStore("token-ball", {
       const ids = new Set(state.displaySettings.selectedAccountIds);
       return state.summary.accounts.filter((account) => ids.has(account.id));
     },
+    enabledAccounts: (state): QuotaAccount[] => {
+      const enabledConnectionIds = new Set(state.connections.filter((connection) => connection.enabled).map((connection) => connection.id));
+      return state.summary.accounts.filter((account) => enabledConnectionIds.has(account.connectionId));
+    },
     displayAccounts(): QuotaAccount[] {
-      return this.selectedAccounts.length ? this.selectedAccounts : this.summary.accounts;
+      return this.selectedAccounts.length ? this.selectedAccounts : this.enabledAccounts;
     },
     totalRemainingPercent: (state) => {
+      const enabledConnectionIds = new Set(state.connections.filter((connection) => connection.enabled).map((connection) => connection.id));
       const values = state.summary.accounts
+        .filter((account) => enabledConnectionIds.has(account.connectionId))
         .map((account) => account.windows.find((window) => window.id === account.criticalWindowId)?.remainingPercent)
         .filter((value): value is number => typeof value === "number");
       if (!values.length) return null;
       return values.reduce((sum, value) => sum + value, 0) / values.length;
     },
     totalEquivalentAccounts: (state) => {
-      return state.summary.accounts.reduce((sum, account) => {
+      const enabledConnectionIds = new Set(state.connections.filter((connection) => connection.enabled).map((connection) => connection.id));
+      return state.summary.accounts.filter((account) => enabledConnectionIds.has(account.connectionId)).reduce((sum, account) => {
         const value = account.windows.find((window) => window.id === account.criticalWindowId)?.remainingPercent;
         return sum + (typeof value === "number" ? value / 100 : 0);
       }, 0);
@@ -131,6 +139,10 @@ export const useTokenBallStore = defineStore("token-ball", {
       await onDisplaySettingsUpdated((settings) => {
         this.displaySettings = normalizeDisplaySettings(settings);
       });
+      await onConnectionsUpdated((connections) => {
+        this.connections = connections;
+        this.connectionError = "";
+      });
     },
     async saveProviderConnection(input: ConnectionInput) {
       const connection = await saveConnection(input);
@@ -150,6 +162,9 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async saveVolcengineConnection(input: Omit<ConnectionInput, "providerType">) {
       return this.saveProviderConnection({ ...input, providerType: "volcengine" });
+    },
+    async saveQianwenConnection(input: Omit<ConnectionInput, "providerType">) {
+      return this.saveProviderConnection({ ...input, providerType: "qianwen" });
     },
     async testCliProxyConnection(id: string) {
       await testConnection(id);

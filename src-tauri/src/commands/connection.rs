@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
     app_state::AppState,
+    events,
     error::AppResult,
-    providers::{cliproxy::CliProxyClient, volcengine::VolcengineClient},
+    providers::{cliproxy::CliProxyClient, qianwen::QianwenClient, volcengine::VolcengineClient},
     quota::{ConnectionInput, ProviderConnection, ProviderType},
     storage::repository,
 };
@@ -38,13 +39,18 @@ pub async fn connection_delete(state: State<'_, Arc<AppState>>, id: String) -> R
 
 #[tauri::command]
 pub async fn connection_set_enabled(
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
     id: String,
     enabled: bool,
 ) -> Result<ProviderConnection, String> {
-    repository::set_connection_enabled(&state.db, &id, enabled)
+    let connection = repository::set_connection_enabled(&state.db, &id, enabled)
         .await
-        .map_err(Into::into)
+        .map_err::<String, _>(Into::into)?;
+    if let Ok(connections) = repository::list_connections(&state.db).await {
+        events::emit_connections_updated(&app, &connections);
+    }
+    Ok(connection)
 }
 
 #[tauri::command]
@@ -64,6 +70,11 @@ pub async fn test_connection_internal(state: &Arc<AppState>, id: &str) -> AppRes
         }
         ProviderType::Volcengine => {
             VolcengineClient::new(&connection.base_url, &key)?
+                .test_connection()
+                .await
+        }
+        ProviderType::Qianwen => {
+            QianwenClient::new(&connection.base_url, &key)?
                 .test_connection()
                 .await
         }

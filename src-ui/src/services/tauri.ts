@@ -106,6 +106,10 @@ export function onDisplaySettingsUpdated(callback: (settings: DisplaySettings) =
   return listen<DisplaySettings>("settings://display-updated", (event) => callback(event.payload));
 }
 
+export function onConnectionsUpdated(callback: (connections: ProviderConnection[]) => void) {
+  return listen<ProviderConnection[]>("connection://updated", (event) => callback(event.payload));
+}
+
 export function onShowOverview(callback: () => void) {
   return listen("main://show-overview", () => callback());
 }

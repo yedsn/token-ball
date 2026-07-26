@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderType {
     CliProxyApi,
     Volcengine,
+    Qianwen,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -84,6 +85,9 @@ pub struct ProviderConfigHint {
     pub coding_seat_id: Option<String>,
     pub coding_web_base_url: Option<String>,
     pub has_coding_web_cookie: bool,
+    pub qianwen_product_code: Option<String>,
+    pub qianwen_gateway_base_url: Option<String>,
+    pub has_qianwen_cookie: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,6 +250,7 @@ impl ToString for ProviderType {
         match self {
             ProviderType::CliProxyApi => "cliproxy_api".to_string(),
             ProviderType::Volcengine => "volcengine".to_string(),
+            ProviderType::Qianwen => "qianwen".to_string(),
         }
     }
 }
@@ -253,6 +258,7 @@ impl ToString for ProviderType {
 pub fn parse_provider_type(value: &str) -> ProviderType {
     match value {
         "volcengine" | "Volcengine" => ProviderType::Volcengine,
+        "qianwen" | "Qianwen" => ProviderType::Qianwen,
         _ => ProviderType::CliProxyApi,
     }
 }

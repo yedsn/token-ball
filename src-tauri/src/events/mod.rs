@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Emitter};
 
-use crate::quota::{DisplaySettings, QuotaSummary};
+use crate::quota::{DisplaySettings, ProviderConnection, QuotaSummary};
 
 pub fn emit_quota_updated(app: &AppHandle, summary: &QuotaSummary) {
     let _ = app.emit("quota://updated", summary);
@@ -24,4 +24,8 @@ pub fn emit_display_settings_updated(app: &AppHandle, settings: &DisplaySettings
 
 pub fn emit_show_overview(app: &AppHandle) {
     let _ = app.emit("main://show-overview", ());
+}
+
+pub fn emit_connections_updated(app: &AppHandle, connections: &[ProviderConnection]) {
+    let _ = app.emit("connection://updated", connections);
 }

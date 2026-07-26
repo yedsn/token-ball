@@ -1,14 +1,10 @@
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
-use std::time::Duration;
+use std::sync::Arc;
 
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 use crate::{
@@ -32,7 +28,6 @@ pub fn setup_tray(
     let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_orb, &hide_orb, &open_main, &refresh, &quit])?;
-    let tray_click_generation = Arc::new(AtomicU64::new(0));
 
     TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
@@ -68,35 +63,33 @@ pub fn setup_tray(
             }
             _ => {}
         })
-        .on_tray_icon_event(move |tray, event| match event {
+        .on_tray_icon_event(|tray, event| match event {
             TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
-                position,
                 ..
             } => {
-                let app = tray.app_handle().clone();
-                let click_generation = tray_click_generation.clone();
-                let current_generation = click_generation.fetch_add(1, Ordering::Relaxed) + 1;
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(220)).await;
-                    if click_generation.load(Ordering::Relaxed) == current_generation {
-                        windows::show_hover_at(&app, position.cast::<i32>());
-                    }
-                });
+                windows::hide_window(tray.app_handle(), "hover");
+                windows::open_main_overview(tray.app_handle());
             }
             TrayIconEvent::DoubleClick {
                 button: MouseButton::Left,
                 ..
             } => {
-                tray_click_generation.fetch_add(1, Ordering::Relaxed);
+                windows::hide_window(tray.app_handle(), "hover");
                 windows::open_main_overview(tray.app_handle());
             }
-            TrayIconEvent::Enter { .. } => {
+            TrayIconEvent::Enter { position, .. } => {
                 let app = tray.app_handle().clone();
+                windows::show_hover_at(&app, position.cast::<i32>());
                 tauri::async_runtime::spawn(async move {
                     update_tray_from_storage(&app).await;
                 });
+            }
+            TrayIconEvent::Leave { .. } => {
+                if let Some(window) = tray.app_handle().get_webview_window("hover") {
+                    let _ = window.emit("hover://orb-leave", ());
+                }
             }
             _ => {}
         })

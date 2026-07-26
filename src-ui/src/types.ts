@@ -33,6 +33,9 @@ export interface ProviderConnection {
     codingSeatId?: string | null;
     codingWebBaseUrl?: string | null;
     hasCodingWebCookie?: boolean;
+    qianwenProductCode?: string | null;
+    qianwenGatewayBaseUrl?: string | null;
+    hasQianwenCookie?: boolean;
   } | null;
 }
 
@@ -45,7 +48,7 @@ export interface ConnectionInput {
   enabled?: boolean;
 }
 
-export type ProviderType = "cliProxyApi" | "volcengine";
+export type ProviderType = "cliProxyApi" | "volcengine" | "qianwen";
 
 export interface PluginManifest {
   id: string;
