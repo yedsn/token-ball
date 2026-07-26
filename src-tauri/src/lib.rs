@@ -52,6 +52,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state)
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             crate::windows::show_window(app, "main");
         }))

@@ -4,9 +4,11 @@ dist
 target
 src-tauri/target
 .vite
+docs/.vitepress/dist
 .DS_Store
 .idea/
 *.log
 *.db
 *.sqlite
 *.sqlite3
+scripts/release/.secrets/

@@ -1,0 +1,174 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_HTTP_TIMEOUT: 600
+  CARGO_HTTP_LOW_SPEED_LIMIT: 1
+  CARGO_HTTP_LOW_SPEED_TIME: 600
+
+jobs:
+  publish:
+    name: Build ${{ matrix.name }} bundle
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+            rust_target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          - name: macOS Intel
+            os: macos-latest
+            rust_target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
+          - name: Windows x64
+            os: windows-latest
+            rust_target: ""
+            args: --bundles nsis
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Use crates.io registry in CI
+        shell: pwsh
+        run: |
+          if (Test-Path .cargo/config.toml) {
+            Move-Item .cargo/config.toml .cargo/config.toml.local-disabled
+          }
+          if (Test-Path .cargo/config) {
+            Move-Item .cargo/config .cargo/config.local-disabled
+          }
+
+      - name: Validate release tag version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v(.+)$') { throw "Release tag must start with v." }
+          $version = $Matches[1]
+          $package = Get-Content package.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $cargo = Get-Content src-tauri/Cargo.toml -Raw -Encoding UTF8
+          $cargoVersionMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+          if (-not $cargoVersionMatch.Success) { throw "Cargo.toml version field was not found." }
+          $cargoVersion = $cargoVersionMatch.Groups[1].Value
+          if ($package.version -ne $version) { throw "package.json version $($package.version) does not match tag $tag." }
+          if ($tauri.version -ne $version) { throw "tauri.conf.json version $($tauri.version) does not match tag $tag." }
+          if ($cargoVersion -ne $version) { throw "Cargo.toml version $cargoVersion does not match tag $tag." }
+
+      - name: Validate updater configuration
+        shell: pwsh
+        run: |
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $updater = $tauri.plugins.updater
+          if (-not $updater.pubkey -or $updater.pubkey -eq 'REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY') {
+            throw 'src-tauri/tauri.conf.json plugins.updater.pubkey is still a placeholder.'
+          }
+          if (-not $updater.endpoints -or $updater.endpoints.Count -eq 0) {
+            throw 'src-tauri/tauri.conf.json plugins.updater.endpoints is empty.'
+          }
+          foreach ($endpoint in $updater.endpoints) {
+            if ($endpoint -match 'OWNER/REPO') { throw 'Updater endpoint still contains OWNER/REPO placeholder.' }
+            if ($endpoint -notmatch '^https://') { throw "Updater endpoint must use HTTPS: $endpoint" }
+          }
+
+      - name: Validate updater signing secrets
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing repository secret TAURI_SIGNING_PRIVATE_KEY.' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Missing repository secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD.' }
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install extra Rust target
+        if: matrix.rust_target != ''
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> src-tauri/target
+
+      - name: Build bundles and publish release assets
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: TokenBall ${{ github.ref_name }}
+          releaseBody: |
+            Automated GitHub Release for TokenBall.
+
+            - Includes the Windows NSIS installer.
+            - Includes macOS Apple Silicon and Intel DMG packages.
+            - Includes `latest.json` for the Tauri desktop auto-update flow.
+
+            ### macOS 用户注意事项
+
+            如果在 macOS 上打开应用时提示异常，请尝试在终端执行以下命令：
+
+            ```bash
+            xattr -cr /Applications/TokenBall.app
+            ```
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          includeDebug: false
+          args: ${{ matrix.args }}
+
+  sync-gitee:
+    name: Sync release to Gitee
+    runs-on: self-hosted
+    needs: publish
+    env:
+      PYTHONUNBUFFERED: "1"
+      GITEE_ACCESS_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+      https_proxy: http://192.168.3.36:7890
+      http_proxy: http://192.168.3.36:7890
+      no_proxy: gitee.com,localhost,127.0.0.1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Skip when Gitee token is not configured
+        if: ${{ env.GITEE_ACCESS_TOKEN == '' }}
+        run: echo "GITEE_ACCESS_TOKEN is not configured, skipping Gitee release sync."
+
+      - name: Sync GitHub release assets to Gitee
+        if: ${{ env.GITEE_ACCESS_TOKEN != '' }}
+        run: python3 scripts/release/sync_gitee_release.py --tag "${{ github.ref_name }}" --target-commitish master
