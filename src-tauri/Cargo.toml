@@ -1,6 +1,6 @@
 [package]
 name = "token-ball"
-version = "0.1.2"
+version = "0.1.3"
 description = "TokenBall desktop quota orb"
 authors = ["TokenBall"]
 license = "MIT"
