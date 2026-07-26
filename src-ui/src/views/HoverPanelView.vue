@@ -282,25 +282,21 @@ onUnmounted(() => {
         <strong>{{ store.totalEquivalentAccounts.toFixed(2) }} 账号</strong>
       </div>
       <div class="hover-dense-table">
-        <div class="hover-dense-head">
-          <span>账号</span>
-          <span>到期</span>
-          <span>剩余</span>
-          <span>5h</span>
-          <span>周</span>
-          <span>月</span>
-        </div>
         <article v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" class="hover-dense-row" :class="balanceRowClass(row)">
           <div class="hover-dense-main">
-            <strong>{{ row.account.displayName }}</strong>
-            <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b>
-            <b>{{ balanceRemainingLabel(row) }}</b>
-            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b>
-            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b>
-            <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b>
+            <div class="dense-account-title">
+              <strong>{{ row.account.displayName }}</strong>
+              <span>{{ row.account.planName }} · {{ row.account.status }}</span>
+            </div>
+            <b class="dense-total-value">{{ balanceRemainingLabel(row) }}</b>
           </div>
-          <div class="hover-dense-sub">
-            <span>{{ row.account.planName }} · {{ row.account.status }}</span>
+          <div class="hover-period-row">
+            <span><em>5 小时</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></span>
+            <span><em>周</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></span>
+            <span><em>月</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></span>
+          </div>
+          <div class="hover-secondary-row">
+            <span>到期 <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
             <span>{{ balanceWindowName(row) }}</span>
             <span>{{ balanceUsageLabel(row) }}</span>
             <span>{{ accountConnectionLabel(row.account) }}</span>

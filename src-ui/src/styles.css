@@ -168,6 +168,7 @@ body,
 .hover-panel {
   width: 100%;
   height: 100%;
+  min-height: 0;
   padding: 10px;
   border: 1px solid rgba(232, 240, 238, 0.12);
   border-radius: 10px;
@@ -243,7 +244,9 @@ body,
 
 .hover-list-wrap {
   min-width: 0;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 8px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -267,38 +270,50 @@ body,
 }
 
 .hover-dense-table {
+  min-height: 0;
   display: grid;
+  align-content: start;
   border: 1px solid rgba(232,240,238,0.07);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143,161,155,0.45) transparent;
 }
 
-.hover-dense-head,
+.hover-dense-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.hover-dense-table::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(143,161,155,0.38);
+}
+
+.hover-dense-table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .hover-dense-main {
   display: grid;
-  grid-template-columns: minmax(88px, 1.5fr) 70px 45px 37px 37px 37px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 7px;
+  column-gap: 12px;
   min-width: 0;
-}
-
-.hover-dense-head {
-  min-height: 24px;
-  padding: 0 8px;
-  color: #7f928b;
-  background: rgba(255,255,255,0.03);
-  font-size: 10px;
-  font-weight: 600;
 }
 
 .hover-dense-row {
   position: relative;
   display: grid;
-  gap: 2px;
-  padding: 6px 8px 5px;
+  gap: 5px;
+  padding: 7px 9px 6px;
   border-top: 1px solid rgba(232,240,238,0.055);
   background: rgba(255,255,255,0.012);
   font-size: 11px;
+}
+
+.hover-dense-row:first-child {
+  border-top: 0;
 }
 
 .hover-dense-row::before {
@@ -317,46 +332,93 @@ body,
 .hover-dense-row.critical::before { background: #ff5a54; }
 .hover-dense-row.unknown::before { background: #48a6ff; }
 
-.hover-dense-main strong,
-.hover-dense-main b,
-.hover-dense-sub span,
-.hover-dense-head span {
+.dense-account-title,
+.dense-account-title strong,
+.dense-account-title span,
+.hover-period-row span,
+.hover-period-row b,
+.hover-secondary-row span,
+.dense-total-value {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.hover-dense-main strong {
-  color: #edf6f2;
-  font-size: 11px;
+.dense-account-title {
+  display: grid;
+  gap: 1px;
 }
 
-.hover-dense-main b {
+.dense-account-title strong {
+  color: #edf6f2;
+  font-size: 12px;
+}
+
+.dense-account-title span {
+  color: #7f928b;
+  font-size: 10px;
+}
+
+.dense-total-value {
+  color: #d7e4df;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.hover-period-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.hover-period-row span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+}
+
+.hover-period-row em {
+  color: #7f928b;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.hover-period-row b {
   color: #d7e4df;
   font-size: 11px;
   font-weight: 700;
 }
 
-.hover-dense-sub {
+.hover-secondary-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(72px, 0.85fr) minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 0.95fr);
   gap: 7px;
   min-width: 0;
 }
 
-.hover-dense-sub span {
-  color: #7f928b;
+.hover-secondary-row span {
+  color: #72837d;
   font-size: 10px;
 }
 
-.hover-dense-row.healthy .hover-dense-main > b:nth-of-type(2),
+.hover-secondary-row b {
+  font-size: 10px;
+}
+
+.hover-dense-row.healthy .dense-total-value,
 .hover-dense-row .balance-quota.healthy { color: #19c37d; }
-.hover-dense-row.warning .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row.warning .dense-total-value,
 .hover-dense-row .balance-quota.warning { color: #e9b949; }
-.hover-dense-row.critical .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row.critical .dense-total-value,
 .hover-dense-row .balance-quota.critical { color: #ff5a54; }
-.hover-dense-row.unknown .hover-dense-main > b:nth-of-type(2),
+.hover-dense-row.unknown .dense-total-value,
 .hover-dense-row .balance-quota.unknown { color: #48a6ff; }
 
 .hover-panel-foot span {
