@@ -152,6 +152,7 @@ export interface DisplaySettings {
   showAccountsInTooltip: boolean;
   showOrbRefreshButton: boolean;
   orbAnimationEnabled: boolean;
+  syncIntervalSeconds: number;
   trayIconStyle: "orb" | "minimal";
   appIconStyle: "meter" | "orb" | "custom";
   customAppIconDataUrl: string;

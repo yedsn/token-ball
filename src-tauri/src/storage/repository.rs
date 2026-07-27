@@ -5,8 +5,8 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     quota::{
-        build_summary, mask_secret, parse_account_status, parse_connection_status,
-        parse_period_type, parse_provider_type, parse_quota_unit, ConnectionBackup, ConnectionInput,
+        build_summary, default_sync_interval_seconds, mask_secret, parse_account_status,
+        parse_connection_status, parse_period_type, parse_provider_type, parse_quota_unit, ConnectionBackup, ConnectionInput,
         ConfigBackup, ImportConfigResult,
         ConnectionStatus, DisplaySettings, ProviderConnection, QuotaAccount, QuotaSummary,
         QuotaWindow, RequestActivity,
@@ -510,11 +510,11 @@ pub async fn load_summary(pool: &SqlitePool, stale: bool) -> AppResult<QuotaSumm
 
 pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
     normalize_legacy_settings(pool).await?;
+    let default_sync_interval = default_sync_interval_seconds().to_string();
     for (key, value) in [
         ("orb.size", "84"),
         ("orb.visible", "true"),
         ("orb.carouselIntervalMs", "4000"),
-        ("sync.intervalSeconds", "3600"),
     ] {
         sqlx::query(
             r#"
@@ -529,6 +529,18 @@ pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
         .execute(pool)
         .await?;
     }
+    sqlx::query(
+        r#"
+        INSERT INTO settings (key, value, updated_at)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(key) DO NOTHING
+        "#,
+    )
+    .bind("sync.intervalSeconds")
+    .bind(default_sync_interval)
+    .bind(Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
     if get_setting(pool, "display.quota").await?.is_none() {
         let default_settings = DisplaySettings::default();
         let value = serde_json::to_string(&default_settings)
@@ -599,17 +611,22 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> AppResult
 
 pub async fn load_display_settings(pool: &SqlitePool) -> AppResult<DisplaySettings> {
     let value = get_setting(pool, "display.quota").await?;
-    Ok(value
+    let mut settings: DisplaySettings = value
         .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default())
+        .unwrap_or_default();
+    if let Some(sync_interval) = load_sync_interval_seconds(pool).await? {
+        settings.sync_interval_seconds = sync_interval;
+    }
+    Ok(settings)
 }
 
 pub async fn save_display_settings(
     pool: &SqlitePool,
     settings: &DisplaySettings,
 ) -> AppResult<DisplaySettings> {
+    let settings = normalize_display_settings(settings);
     let value =
-        serde_json::to_string(settings).map_err(|error| AppError::Message(error.to_string()))?;
+        serde_json::to_string(&settings).map_err(|error| AppError::Message(error.to_string()))?;
     sqlx::query(
         r#"
         INSERT INTO settings (key, value, updated_at)
@@ -624,7 +641,30 @@ pub async fn save_display_settings(
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await?;
+    set_setting(
+        pool,
+        "sync.intervalSeconds",
+        &settings.sync_interval_seconds.to_string(),
+    )
+    .await?;
     Ok(settings.clone())
+}
+
+fn normalize_display_settings(settings: &DisplaySettings) -> DisplaySettings {
+    let mut settings = settings.clone();
+    settings.sync_interval_seconds = clamp_sync_interval_seconds(settings.sync_interval_seconds);
+    settings
+}
+
+pub fn clamp_sync_interval_seconds(value: u64) -> u64 {
+    value.clamp(60, 86_400)
+}
+
+pub async fn load_sync_interval_seconds(pool: &SqlitePool) -> AppResult<Option<u64>> {
+    Ok(get_setting(pool, "sync.intervalSeconds")
+        .await?
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(clamp_sync_interval_seconds))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

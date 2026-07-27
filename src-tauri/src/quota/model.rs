@@ -217,6 +217,8 @@ pub struct DisplaySettings {
     pub show_orb_refresh_button: bool,
     #[serde(default = "default_true")]
     pub orb_animation_enabled: bool,
+    #[serde(default = "default_sync_interval_seconds")]
+    pub sync_interval_seconds: u64,
     #[serde(default = "default_tray_icon_style")]
     pub tray_icon_style: String,
     #[serde(default = "default_app_icon_style")]
@@ -248,6 +250,7 @@ impl Default for DisplaySettings {
             show_accounts_in_tooltip: true,
             show_orb_refresh_button: true,
             orb_animation_enabled: true,
+            sync_interval_seconds: default_sync_interval_seconds(),
             tray_icon_style: default_tray_icon_style(),
             app_icon_style: default_app_icon_style(),
             custom_app_icon_data_url: String::new(),
@@ -259,6 +262,10 @@ impl Default for DisplaySettings {
 
 fn default_true() -> bool {
     true
+}
+
+pub fn default_sync_interval_seconds() -> u64 {
+    3600
 }
 
 fn default_tray_icon_style() -> String {

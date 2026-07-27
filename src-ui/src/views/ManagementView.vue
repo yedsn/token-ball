@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Blocks, CheckCircle2, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
+import { Blocks, CheckCircle2, Clock3, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -138,6 +138,13 @@ const appIconOptions = computed(() => [
   { id: "orb" as const, label: "额度", description: "使用与桌面悬浮窗一致的绿色额度图标" },
   { id: "custom" as const, label: "自定义", description: "上传 PNG、JPG 或 WebP 图标", src: store.displaySettings.customAppIconDataUrl }
 ]);
+const syncIntervalMinutes = computed(() => Math.round(store.displaySettings.syncIntervalSeconds / 60));
+const syncIntervalOptions = [
+  { label: "5 分钟", seconds: 300 },
+  { label: "15 分钟", seconds: 900 },
+  { label: "30 分钟", seconds: 1800 },
+  { label: "1 小时", seconds: 3600 }
+];
 
 watch(
   () => store.connections,
@@ -653,6 +660,11 @@ function toggleDisplayFlag(key: "showAvailableAccounts" | "showConnectionStatus"
   store.updateDisplayFlag(key, (event.target as HTMLInputElement).checked);
 }
 
+function updateSyncIntervalMinutes(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value);
+  store.updateSyncIntervalSeconds(value * 60);
+}
+
 async function setProgramIcon(style: "meter" | "orb" | "custom") {
   iconError.value = "";
   if (style === "custom" && !store.displaySettings.customAppIconDataUrl) {
@@ -1083,6 +1095,26 @@ async function startTitlebarDrag(event: PointerEvent) {
             <div class="segmented-control">
               <button :class="{ active: store.displaySettings.trayIconStyle === 'orb' }" @click="store.updateTrayIconStyle('orb')">能量球</button>
               <button :class="{ active: store.displaySettings.trayIconStyle === 'minimal' }" @click="store.updateTrayIconStyle('minimal')">简洁色块</button>
+            </div>
+          </div>
+
+          <div class="setting-block">
+            <div class="setting-block-title">自动刷新</div>
+            <p class="setting-hint">后台会按这个间隔自动同步额度；手动刷新不受影响。</p>
+            <label class="interval-row">
+              <span><Clock3 :size="14" />刷新间隔</span>
+              <input type="number" min="1" max="1440" step="1" :value="syncIntervalMinutes" @change="updateSyncIntervalMinutes" />
+              <small>分钟</small>
+            </label>
+            <div class="segmented-control sync-presets">
+              <button
+                v-for="option in syncIntervalOptions"
+                :key="option.seconds"
+                :class="{ active: store.displaySettings.syncIntervalSeconds === option.seconds }"
+                @click="store.updateSyncIntervalSeconds(option.seconds)"
+              >
+                {{ option.label }}
+              </button>
             </div>
           </div>
 

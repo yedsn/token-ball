@@ -57,6 +57,7 @@ const defaultDisplaySettings: DisplaySettings = {
   showAccountsInTooltip: true,
   showOrbRefreshButton: true,
   orbAnimationEnabled: true,
+  syncIntervalSeconds: 3600,
   trayIconStyle: "orb",
   appIconStyle: "meter",
   customAppIconDataUrl: "",
@@ -285,6 +286,10 @@ export const useTokenBallStore = defineStore("token-ball", {
     },
     async updateDisplayFlag(key: keyof Pick<DisplaySettings, "showTotalRemaining" | "showAvailableAccounts" | "showConnectionStatus" | "showAccountsInTooltip" | "showOrbRefreshButton" | "orbAnimationEnabled">, enabled: boolean) {
       await this.saveDisplay({ ...this.displaySettings, [key]: enabled });
+    },
+    async updateSyncIntervalSeconds(seconds: number) {
+      const value = Number.isFinite(seconds) ? Math.max(60, Math.min(86_400, Math.round(seconds))) : defaultDisplaySettings.syncIntervalSeconds;
+      await this.saveDisplay({ ...this.displaySettings, syncIntervalSeconds: value });
     },
     async updateTrayIconStyle(style: DisplaySettings["trayIconStyle"]) {
       await this.saveDisplay({ ...this.displaySettings, trayIconStyle: style });

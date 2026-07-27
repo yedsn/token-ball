@@ -1491,6 +1491,39 @@ button:disabled {
   line-height: 1.5;
 }
 
+.interval-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 96px 42px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(232,240,238,0.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.035);
+}
+
+.interval-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #dce8e4;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.interval-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  font-size: 12px;
+}
+
+.interval-row small {
+  color: #8fa19b;
+  font-size: 12px;
+}
+
 .check-row {
   display: grid;
   grid-template-columns: 18px 1fr;
@@ -1577,6 +1610,10 @@ button:disabled {
 .segmented-control button.active {
   color: #06110d;
   background: #19c37d;
+}
+
+.sync-presets {
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
 }
 
 .orb-shell.still .energy-ring,
