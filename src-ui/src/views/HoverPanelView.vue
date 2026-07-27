@@ -309,7 +309,7 @@ function hideNow() {
 
 function closeIfOutside(focused: boolean) {
   const recentlyShown = Date.now() - lastShownAt < focusHideGraceMs;
-  if (!focused && !recentlyShown && !pointerInsideOrb.value && !pointerInsidePanel.value) hideNow();
+  if (!focused && !recentlyShown && !pointerInsidePanel.value) hideNow();
 }
 
 onMounted(async () => {

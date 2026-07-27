@@ -43,9 +43,7 @@ pub fn show_window(app: &AppHandle, label: &str) {
             restore_main_window_state(app, &window);
         }
         let _ = window.show();
-        if label != "hover" {
-            let _ = window.set_focus();
-        }
+        let _ = window.set_focus();
     }
 }
 
@@ -158,6 +156,7 @@ fn show_hover_window_near(
     let position = hover_position_near(anchor, anchor_width, hover_width, hover_height, 8, monitor);
     let _ = window.set_position(position);
     let _ = window.show();
+    let _ = window.set_focus();
     let _ = window.emit("hover://orb-enter", ());
 }
 
