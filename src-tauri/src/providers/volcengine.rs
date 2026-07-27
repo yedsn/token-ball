@@ -278,13 +278,17 @@ impl VolcengineClient {
                     .as_ref()
                     .and_then(web_coding_subscription_until)
             });
+        let plan_name = subscription
+            .as_ref()
+            .and_then(subscribe_trade_coding_plan_name)
+            .unwrap_or_else(|| "页面渠道".to_string());
         Ok(QuotaAccount {
             id: format!("{connection_id}:volcengine-coding-plan-web"),
             connection_id: connection_id.to_string(),
             external_id: "volcengine-coding-plan-web".to_string(),
             display_name: "Coding Plan 个人版".to_string(),
             masked_identifier: Some("控制台 Cookie".to_string()),
-            plan_name: "页面渠道".to_string(),
+            plan_name,
             status: AccountStatus::Available,
             windows,
             critical_window_id,
@@ -954,6 +958,41 @@ fn subscribe_trade_subscription_until(value: &Value) -> Option<DateTime<Utc>> {
     dates.into_iter().min()
 }
 
+fn subscribe_trade_coding_plan_name(value: &Value) -> Option<String> {
+    let info_list = value.get("InfoList").unwrap_or(value);
+    collect_coding_plan_biz_info(info_list).map(coding_plan_biz_info_label)
+}
+
+fn collect_coding_plan_biz_info(value: &Value) -> Option<&str> {
+    match value {
+        Value::Array(items) => items.iter().find_map(collect_coding_plan_biz_info),
+        Value::Object(map) => {
+            let is_coding_plan = map
+                .get("ResourceType")
+                .and_then(Value::as_str)
+                .map(|resource_type| resource_type.eq_ignore_ascii_case("CodingPlan"))
+                .unwrap_or(false);
+            if is_coding_plan {
+                if let Some(biz_info) = map
+                    .get("BizInfo")
+                    .or_else(|| map.get("bizInfo"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    return Some(biz_info);
+                }
+            }
+            map.values().find_map(collect_coding_plan_biz_info)
+        }
+        _ => None,
+    }
+}
+
+fn coding_plan_biz_info_label(biz_info: &str) -> String {
+    biz_info.to_ascii_lowercase()
+}
+
 fn collect_subscription_dates(value: &Value, dates: &mut Vec<DateTime<Utc>>) {
     match value {
         Value::Array(items) => {
@@ -1612,6 +1651,10 @@ mod tests {
                 .unwrap()
                 .to_rfc3339(),
             "2026-08-29T15:59:59+00:00"
+        );
+        assert_eq!(
+            subscribe_trade_coding_plan_name(raw.pointer("/Result").unwrap()).as_deref(),
+            Some("lite")
         );
     }
 
