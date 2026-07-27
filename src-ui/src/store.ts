@@ -58,6 +58,9 @@ const defaultDisplaySettings: DisplaySettings = {
   showOrbRefreshButton: true,
   orbAnimationEnabled: true,
   syncIntervalSeconds: 3600,
+  randomSyncDelayEnabled: false,
+  randomSyncDelayMinSeconds: 60,
+  randomSyncDelayMaxSeconds: 600,
   trayIconStyle: "orb",
   appIconStyle: "meter",
   customAppIconDataUrl: "",
@@ -290,6 +293,19 @@ export const useTokenBallStore = defineStore("token-ball", {
     async updateSyncIntervalSeconds(seconds: number) {
       const value = Number.isFinite(seconds) ? Math.max(60, Math.min(86_400, Math.round(seconds))) : defaultDisplaySettings.syncIntervalSeconds;
       await this.saveDisplay({ ...this.displaySettings, syncIntervalSeconds: value });
+    },
+    async updateRandomSyncDelay(enabled: boolean, minSeconds?: number, maxSeconds?: number) {
+      const nextMinSeconds = minSeconds ?? this.displaySettings.randomSyncDelayMinSeconds;
+      const nextMaxSeconds = maxSeconds ?? this.displaySettings.randomSyncDelayMaxSeconds;
+      const minValue = Number.isFinite(nextMinSeconds) ? Math.max(0, Math.min(3600, Math.round(nextMinSeconds))) : defaultDisplaySettings.randomSyncDelayMinSeconds;
+      const maxValue = Number.isFinite(nextMaxSeconds) ? Math.max(0, Math.min(3600, Math.round(nextMaxSeconds))) : defaultDisplaySettings.randomSyncDelayMaxSeconds;
+      const [minDelay, maxDelay] = minValue <= maxValue ? [minValue, maxValue] : [maxValue, minValue];
+      await this.saveDisplay({
+        ...this.displaySettings,
+        randomSyncDelayEnabled: enabled,
+        randomSyncDelayMinSeconds: minDelay,
+        randomSyncDelayMaxSeconds: maxDelay
+      });
     },
     async updateTrayIconStyle(style: DisplaySettings["trayIconStyle"]) {
       await this.saveDisplay({ ...this.displaySettings, trayIconStyle: style });

@@ -1524,6 +1524,10 @@ button:disabled {
   font-size: 12px;
 }
 
+.random-delay-row {
+  margin-left: 28px;
+}
+
 .check-row {
   display: grid;
   grid-template-columns: 18px 1fr;

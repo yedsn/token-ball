@@ -653,11 +653,27 @@ pub async fn save_display_settings(
 fn normalize_display_settings(settings: &DisplaySettings) -> DisplaySettings {
     let mut settings = settings.clone();
     settings.sync_interval_seconds = clamp_sync_interval_seconds(settings.sync_interval_seconds);
+    let (min_delay, max_delay) = clamp_random_sync_delay_range(
+        settings.random_sync_delay_min_seconds,
+        settings.random_sync_delay_max_seconds,
+    );
+    settings.random_sync_delay_min_seconds = min_delay;
+    settings.random_sync_delay_max_seconds = max_delay;
     settings
 }
 
 pub fn clamp_sync_interval_seconds(value: u64) -> u64 {
     value.clamp(60, 86_400)
+}
+
+pub fn clamp_random_sync_delay_range(min: u64, max: u64) -> (u64, u64) {
+    let min = min.clamp(0, 3_600);
+    let max = max.clamp(0, 3_600);
+    if min <= max {
+        (min, max)
+    } else {
+        (max, min)
+    }
 }
 
 pub async fn load_sync_interval_seconds(pool: &SqlitePool) -> AppResult<Option<u64>> {

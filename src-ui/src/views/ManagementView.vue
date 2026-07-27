@@ -147,6 +147,8 @@ const syncIntervalOptions = [
   { label: "30 分钟", seconds: 1800 },
   { label: "1 小时", seconds: 3600 }
 ];
+const randomDelayMinMinutes = computed(() => Math.round(store.displaySettings.randomSyncDelayMinSeconds / 60));
+const randomDelayMaxMinutes = computed(() => Math.round(store.displaySettings.randomSyncDelayMaxSeconds / 60));
 
 watch(
   () => store.connections,
@@ -667,6 +669,26 @@ function updateSyncIntervalMinutes(event: Event) {
   store.updateSyncIntervalSeconds(value * 60);
 }
 
+function updateRandomDelayRange(event: Event, field: "min" | "max") {
+  const value = Number((event.target as HTMLInputElement).value);
+  const minSeconds = field === "min" ? value * 60 : store.displaySettings.randomSyncDelayMinSeconds;
+  const maxSeconds = field === "max" ? value * 60 : store.displaySettings.randomSyncDelayMaxSeconds;
+  void store.updateRandomSyncDelay(store.displaySettings.randomSyncDelayEnabled, minSeconds, maxSeconds);
+}
+
+function updateRandomDelayMin(event: Event) {
+  updateRandomDelayRange(event, "min");
+}
+
+function updateRandomDelayMax(event: Event) {
+  updateRandomDelayRange(event, "max");
+}
+
+function toggleRandomDelay(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked;
+  void store.updateRandomSyncDelay(enabled);
+}
+
 async function setProgramIcon(style: "meter" | "orb" | "custom") {
   iconError.value = "";
   if (style === "custom" && !store.displaySettings.customAppIconDataUrl) {
@@ -1039,6 +1061,25 @@ async function startTitlebarDrag(event: PointerEvent) {
                 {{ option.label }}
               </button>
             </div>
+          </div>
+
+          <div class="setting-block">
+            <div class="setting-block-title">随机延迟</div>
+            <label class="check-row">
+              <input type="checkbox" :checked="store.displaySettings.randomSyncDelayEnabled" @change="toggleRandomDelay" />
+              <span><b>启用随机时间范围</b><small>每次自动刷新都会在基础间隔后额外增加一个随机延迟</small></span>
+            </label>
+            <div v-if="store.displaySettings.randomSyncDelayEnabled" class="interval-row random-delay-row">
+              <span><Clock3 :size="14" />附加最小值</span>
+              <input type="number" min="0" max="60" step="1" :value="randomDelayMinMinutes" @change="updateRandomDelayMin" />
+              <small>分钟</small>
+            </div>
+            <div v-if="store.displaySettings.randomSyncDelayEnabled" class="interval-row random-delay-row">
+              <span><Clock3 :size="14" />附加最大值</span>
+              <input type="number" min="0" max="60" step="1" :value="randomDelayMaxMinutes" @change="updateRandomDelayMax" />
+              <small>分钟</small>
+            </div>
+            <p class="setting-hint">建议保留一个较小范围，例如 1 到 10 分钟。它只能减少固定节奏的特征，不能保证服务端不会识别或限制请求。</p>
           </div>
         </section>
 

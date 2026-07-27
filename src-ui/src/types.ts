@@ -153,6 +153,9 @@ export interface DisplaySettings {
   showOrbRefreshButton: boolean;
   orbAnimationEnabled: boolean;
   syncIntervalSeconds: number;
+  randomSyncDelayEnabled: boolean;
+  randomSyncDelayMinSeconds: number;
+  randomSyncDelayMaxSeconds: number;
   trayIconStyle: "orb" | "minimal";
   appIconStyle: "meter" | "orb" | "custom";
   customAppIconDataUrl: string;
