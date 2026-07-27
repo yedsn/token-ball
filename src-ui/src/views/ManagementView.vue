@@ -5,7 +5,7 @@ import { Power } from "lucide-vue-next";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
-import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWindow, toggleMainWindowMaximize, onShowOverview, onShowUpdate } from "../services/tauri";
+import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, openExternalUrl, showWindow, toggleMainWindowMaximize, onShowOverview, onShowUpdate } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
@@ -14,6 +14,7 @@ type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
 type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
 const store = useTokenBallStore();
+const instanceGuideUrl = "https://yedsn.github.io/token-ball/guide/instance-onboarding";
 const page = ref<MainPage>("overview");
 const settingsSection = ref<SettingsSection>("appearance");
 const orbVisible = ref(true);
@@ -824,6 +825,14 @@ async function startTitlebarDrag(event: PointerEvent) {
   if (event.button !== 0) return;
   await getCurrentWindow().startDragging();
 }
+
+async function openInstanceGuide() {
+  try {
+    await openExternalUrl(instanceGuideUrl);
+  } catch (error) {
+    notice.value = String(error);
+  }
+}
 </script>
 
 <template>
@@ -895,8 +904,8 @@ async function startTitlebarDrag(event: PointerEvent) {
           <h1>{{ pageTitle }}</h1>
           <p>{{ pageDescription }}</p>
         </div>
-        <button class="primary" @click="store.refresh" :disabled="store.refreshing || !store.hasConnection">
-          <RefreshCw :size="16" :class="{ spin: store.refreshing }" />立即刷新
+        <button v-if="page === 'instance'" type="button" class="topbar-help" @click="openInstanceGuide">
+          <Info :size="15" />使用说明
         </button>
       </header>
 

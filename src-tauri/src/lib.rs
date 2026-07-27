@@ -115,6 +115,7 @@ pub fn run() {
             commands::window_minimize_main,
             commands::window_toggle_main_maximize,
             commands::window_close_main,
+            commands::open_external_url,
             commands::orb_get_visible
         ])
         .run(tauri::generate_context!())

@@ -98,6 +98,10 @@ export function closeMainWindow(): Promise<void> {
   return invoke("window_close_main");
 }
 
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke("open_external_url", { url });
+}
+
 export function getOrbVisible(): Promise<boolean> {
   return invoke("orb_get_visible");
 }

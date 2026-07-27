@@ -54,5 +54,6 @@ npm run dev
 ## 下一步
 
 - 了解额度和窗口概念：[`/guide/core-concepts`](/guide/core-concepts)
-- 配置不同 Provider：[`/guide/providers`](/guide/providers)
+- 按实例完成接入：[`/guide/instance-onboarding`](/guide/instance-onboarding)
+- 查看字段速查：[`/guide/providers`](/guide/providers)
 - 查看常用命令：[`/reference/commands`](/reference/commands)

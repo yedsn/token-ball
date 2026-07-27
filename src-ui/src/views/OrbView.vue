@@ -11,6 +11,7 @@ const index = ref(0);
 const paused = ref(false);
 let timer: number | undefined;
 let hoverTimer: number | undefined;
+let hoverSession = 0;
 
 const views = computed(() => [
   ...(store.displaySettings.showTotalRemaining
@@ -58,9 +59,11 @@ onUnmounted(() => {
 
 async function openHover() {
   paused.value = true;
+  const session = ++hoverSession;
   if (hoverTimer) window.clearTimeout(hoverTimer);
   emit("hover://orb-enter");
   hoverTimer = window.setTimeout(async () => {
+    if (session !== hoverSession) return;
     await showWindow("hover");
     emit("hover://orb-enter");
   }, 180);
@@ -68,6 +71,7 @@ async function openHover() {
 
 async function closeHover() {
   paused.value = false;
+  hoverSession += 1;
   if (hoverTimer) window.clearTimeout(hoverTimer);
   emit("hover://orb-leave");
 }

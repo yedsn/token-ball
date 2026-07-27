@@ -34,6 +34,7 @@ export default defineConfig({
           items: [
             { text: '快速开始', link: '/guide/quick-start' },
             { text: '核心概念', link: '/guide/core-concepts' },
+            { text: '实例接入说明', link: '/guide/instance-onboarding' },
             { text: 'Provider 配置', link: '/guide/providers' }
           ]
         }

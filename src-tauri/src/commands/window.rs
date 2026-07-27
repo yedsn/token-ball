@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::process::Command;
 
 use tauri::{AppHandle, Manager, State};
+use url::Url;
 
 use crate::{app_state::AppState, storage::repository, windows};
 
@@ -70,5 +72,36 @@ pub async fn window_toggle_main_maximize(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn window_close_main(app: AppHandle) -> Result<(), String> {
     windows::handle_main_close(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_external_url(url: String) -> Result<(), String> {
+    let parsed = Url::parse(&url).map_err(|_| "无效的链接地址".to_string())?;
+    let allowed = parsed.scheme() == "https"
+        && parsed.host_str() == Some("yedsn.github.io")
+        && parsed.path().starts_with("/token-ball/");
+    if !allowed {
+        return Err("只允许打开 TokenBall 文档站链接".to_string());
+    }
+
+    open_system_browser(parsed.as_str()).map_err(|error| format!("打开使用说明失败：{error}"))
+}
+
+fn open_system_browser(url: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(url).spawn()?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open").arg(url).spawn()?;
+    }
     Ok(())
 }

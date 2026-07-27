@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 
 use crate::{app_state::AppState, events, storage::repository};
 
 pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
+const DEFAULT_HOVER_WIDTH: i32 = 520;
+const DEFAULT_HOVER_HEIGHT: i32 = 470;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,11 +24,9 @@ pub fn show_window(app: &AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
         if label == "hover" {
             if let Some(orb) = app.get_webview_window("orb") {
-                if let (Ok(orb_position), Ok(orb_size), Ok(hover_size)) = (
-                    orb.outer_position(),
-                    orb.outer_size(),
-                    window.outer_size(),
-                ) {
+                if let (Ok(orb_position), Ok(orb_size), Ok(hover_size)) =
+                    (orb.outer_position(), orb.outer_size(), window.outer_size())
+                {
                     let position = hover_position_near(
                         orb_position,
                         orb_size.width as i32,
@@ -43,7 +43,9 @@ pub fn show_window(app: &AppHandle, label: &str) {
             restore_main_window_state(app, &window);
         }
         let _ = window.show();
-        let _ = window.set_focus();
+        if label != "hover" {
+            let _ = window.set_focus();
+        }
     }
 }
 
@@ -55,8 +57,12 @@ pub fn handle_main_close(app: &AppHandle) {
 }
 
 pub fn save_main_window_state(app: &AppHandle, window: &WebviewWindow) {
-    let Some(saved) = main_window_state(window) else { return; };
-    let Ok(value) = serde_json::to_string(&saved) else { return; };
+    let Some(saved) = main_window_state(window) else {
+        return;
+    };
+    let Ok(value) = serde_json::to_string(&saved) else {
+        return;
+    };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<Arc<AppState>>();
@@ -95,7 +101,9 @@ fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
         .read()
         .ok()
         .and_then(|saved| saved.clone());
-    let Some(saved) = saved else { return; };
+    let Some(saved) = saved else {
+        return;
+    };
     let _ = window.unmaximize();
     let _ = window.set_fullscreen(false);
     let _ = window.set_size(tauri::PhysicalSize::new(saved.width, saved.height));
@@ -108,23 +116,49 @@ fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
     }
 }
 
-pub fn show_hover_at(app: &AppHandle, anchor: PhysicalPosition<i32>) {
-    if let Some(window) = app.get_webview_window("hover") {
-        if let Ok(hover_size) = window.outer_size() {
-            let position = hover_position_near(
-                anchor,
-                0,
-                hover_size.width as i32,
-                hover_size.height as i32,
-                8,
-                window.current_monitor().ok().flatten(),
-            );
-            let _ = window.set_position(position);
-            let _ = window.show();
-            let _ = window.set_focus();
-            let _ = window.emit("hover://orb-enter", ());
-        }
+pub fn show_hover_near_tray(app: &AppHandle, rect: Rect, fallback: PhysicalPosition<f64>) {
+    let Some(window) = app.get_webview_window("hover") else {
+        return;
+    };
+    let scale_factor = window.scale_factor().unwrap_or(1.0);
+    let (anchor, anchor_width) = tray_hover_anchor(rect, fallback, scale_factor);
+    show_hover_window_near(&window, anchor, anchor_width);
+}
+
+fn tray_hover_anchor(
+    rect: Rect,
+    fallback: PhysicalPosition<f64>,
+    scale_factor: f64,
+) -> (PhysicalPosition<i32>, i32) {
+    let rect_size = rect.size.to_physical::<i32>(scale_factor);
+    if rect_size.width > 0 && rect_size.height > 0 {
+        (
+            rect.position.to_physical::<i32>(scale_factor),
+            rect_size.width,
+        )
+    } else {
+        (fallback.cast::<i32>(), 0)
     }
+}
+
+fn show_hover_window_near(
+    window: &WebviewWindow,
+    anchor: PhysicalPosition<i32>,
+    anchor_width: i32,
+) {
+    let (hover_width, hover_height) = window
+        .outer_size()
+        .map(|size| (size.width as i32, size.height as i32))
+        .unwrap_or((DEFAULT_HOVER_WIDTH, DEFAULT_HOVER_HEIGHT));
+    let monitor = window
+        .monitor_from_point(anchor.x as f64, anchor.y as f64)
+        .ok()
+        .flatten()
+        .or_else(|| window.current_monitor().ok().flatten());
+    let position = hover_position_near(anchor, anchor_width, hover_width, hover_height, 8, monitor);
+    let _ = window.set_position(position);
+    let _ = window.show();
+    let _ = window.emit("hover://orb-enter", ());
 }
 
 fn hover_position_near(
@@ -194,4 +228,38 @@ pub fn open_main_update(app: &AppHandle) {
         tokio::time::sleep(std::time::Duration::from_millis(120)).await;
         events::emit_show_update(&app_handle);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::{LogicalPosition, LogicalSize, PhysicalPosition, Position, Rect, Size};
+
+    #[test]
+    fn tray_hover_anchor_uses_rect_when_available() {
+        let rect = Rect {
+            position: Position::Logical(LogicalPosition::new(100.0, 200.0)),
+            size: Size::Logical(LogicalSize::new(24.0, 24.0)),
+        };
+        let fallback = PhysicalPosition::new(500.0, 600.0);
+
+        let (anchor, width) = tray_hover_anchor(rect, fallback, 1.5);
+
+        assert_eq!(anchor, PhysicalPosition::new(150, 300));
+        assert_eq!(width, 36);
+    }
+
+    #[test]
+    fn tray_hover_anchor_falls_back_when_rect_is_empty() {
+        let rect = Rect {
+            position: Position::Logical(LogicalPosition::new(100.0, 200.0)),
+            size: Size::Logical(LogicalSize::new(0.0, 0.0)),
+        };
+        let fallback = PhysicalPosition::new(500.0, 600.0);
+
+        let (anchor, width) = tray_hover_anchor(rect, fallback, 1.5);
+
+        assert_eq!(anchor, PhysicalPosition::new(500, 600));
+        assert_eq!(width, 0);
+    }
 }

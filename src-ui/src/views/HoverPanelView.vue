@@ -13,12 +13,18 @@ type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 const store = useTokenBallStore();
 const visible = ref(false);
 const pointerInsidePanel = ref(false);
+const pointerInsideOrb = ref(false);
 const denseTableRef = ref<HTMLElement | null>(null);
 let leaveTimer: number | undefined;
+let lastShownAt = 0;
+let lastOrbLoadAt = 0;
+let orbLoadPromise: Promise<void> | null = null;
 let unlistenOrbEnter: UnlistenFn | undefined;
 let unlistenOrbLeave: UnlistenFn | undefined;
 let unlistenFocusChanged: UnlistenFn | undefined;
 const panelHideDelayMs = 900;
+const focusHideGraceMs = 350;
+const orbReloadCooldownMs = 1200;
 
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
@@ -216,14 +222,35 @@ function reset(value?: string | null) {
 function showDelayed() {
   pointerInsidePanel.value = true;
   visible.value = true;
+  lastShownAt = Date.now();
   if (leaveTimer) window.clearTimeout(leaveTimer);
 }
 
 async function showFromOrb() {
+  const wasVisible = visible.value;
+  pointerInsideOrb.value = true;
   visible.value = true;
+  lastShownAt = Date.now();
   if (leaveTimer) window.clearTimeout(leaveTimer);
-  await store.loadConnections();
-  resetListScroll();
+  await ensureConnectionsLoaded();
+  if (!wasVisible) resetListScroll();
+}
+
+async function ensureConnectionsLoaded() {
+  if (orbLoadPromise) {
+    await orbLoadPromise;
+    return;
+  }
+  if (lastOrbLoadAt > 0 && Date.now() - lastOrbLoadAt < orbReloadCooldownMs) {
+    return;
+  }
+  orbLoadPromise = store.loadConnections();
+  try {
+    await orbLoadPromise;
+    lastOrbLoadAt = Date.now();
+  } finally {
+    orbLoadPromise = null;
+  }
 }
 
 async function refreshPanel() {
@@ -242,6 +269,7 @@ function resetListScroll() {
 
 function hideDelayed() {
   pointerInsidePanel.value = false;
+  pointerInsideOrb.value = false;
   if (leaveTimer) window.clearTimeout(leaveTimer);
   leaveTimer = window.setTimeout(() => {
     hideNow();
@@ -249,9 +277,10 @@ function hideDelayed() {
 }
 
 function hideAfterOrbLeave() {
+  pointerInsideOrb.value = false;
   if (leaveTimer) window.clearTimeout(leaveTimer);
   leaveTimer = window.setTimeout(() => {
-    if (!pointerInsidePanel.value) hideNow();
+    if (!pointerInsideOrb.value && !pointerInsidePanel.value) hideNow();
   }, panelHideDelayMs);
 }
 
@@ -260,11 +289,13 @@ function hideNow() {
   leaveTimer = undefined;
   visible.value = false;
   pointerInsidePanel.value = false;
+  pointerInsideOrb.value = false;
   hideWindow("hover");
 }
 
 function closeIfOutside(focused: boolean) {
-  if (!focused && !pointerInsidePanel.value) hideNow();
+  const recentlyShown = Date.now() - lastShownAt < focusHideGraceMs;
+  if (!focused && !recentlyShown && !pointerInsideOrb.value && !pointerInsidePanel.value) hideNow();
 }
 
 onMounted(async () => {

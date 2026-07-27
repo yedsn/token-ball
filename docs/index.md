@@ -12,8 +12,8 @@ hero:
       text: 快速开始
       link: /guide/quick-start
     - theme: alt
-      text: Provider 配置
-      link: /guide/providers
+      text: 实例接入说明
+      link: /guide/instance-onboarding
     - theme: alt
       text: GitHub 仓库
       link: https://github.com/yedsn/token-ball
@@ -85,7 +85,7 @@ features:
 ## 从这里开始
 
 - 想本地跑起来：看 [`/guide/quick-start`](/guide/quick-start)
-- 想配置额度来源：看 [`/guide/providers`](/guide/providers)
+- 想配置额度来源：看 [`/guide/instance-onboarding`](/guide/instance-onboarding)
 - 想了解核心概念：看 [`/guide/core-concepts`](/guide/core-concepts)
 - 想参与开发：看 [`/develop/setup`](/develop/setup)
 - 想查项目结构和命令：看 [`/reference/project-structure`](/reference/project-structure)

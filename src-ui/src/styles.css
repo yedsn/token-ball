@@ -822,9 +822,38 @@ body,
   overflow-x: hidden;
 }
 
+.topbar {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .topbar h1 {
   font-size: 28px;
   letter-spacing: 0;
+}
+
+.topbar-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(232,240,238,0.1);
+  border-radius: 8px;
+  color: #d7e4df;
+  background: rgba(255,255,255,0.06);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar-help:hover {
+  border-color: rgba(25,195,125,0.42);
+  color: #f3fbf8;
+  background: rgba(25,195,125,0.12);
 }
 
 .metrics,

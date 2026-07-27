@@ -2,6 +2,8 @@
 
 TokenBall 当前支持 CLIProxyAPI、火山引擎和千问 Token Plan。所有凭证都只应在可信本机环境配置，不要提交本地数据库、日志或配置文件。
 
+如果你是第一次配置实例，建议先看 [`/guide/instance-onboarding`](/guide/instance-onboarding)，按 Provider 获取参数并完成保存、测试和刷新。
+
 ## CLIProxyAPI
 
 适用于已经使用 CLIProxyAPI 管理多个 Codex 账号的场景。
