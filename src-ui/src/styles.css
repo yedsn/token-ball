@@ -1318,6 +1318,18 @@ body,
   padding: 18px;
 }
 
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.panel-title-row h2 {
+  margin-bottom: 0;
+}
+
 .panel h2 {
   margin-bottom: 16px;
   font-size: 17px;

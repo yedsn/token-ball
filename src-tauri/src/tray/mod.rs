@@ -29,7 +29,6 @@ pub fn setup_tray(
     initial_settings: &DisplaySettings,
 ) -> tauri::Result<()> {
     let last_hover_move = Arc::new(Mutex::new(Instant::now() - HOVER_MOVE_THROTTLE));
-    let tray_hover_active = Arc::new(Mutex::new(false));
     let show_orb = MenuItem::with_id(app, "show_orb", "显示额度", true, None::<&str>)?;
     let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏额度", true, None::<&str>)?;
     let open_main = MenuItem::with_id(app, "open_main", "打开管理", true, None::<&str>)?;
@@ -86,7 +85,6 @@ pub fn setup_tray(
         })
         .on_tray_icon_event({
             let last_hover_move = Arc::clone(&last_hover_move);
-            let tray_hover_active = Arc::clone(&tray_hover_active);
             move |tray, event| match event {
                 TrayIconEvent::Click {
                     button: MouseButton::Left,
@@ -115,13 +113,6 @@ pub fn setup_tray(
                         }
                         *last_move = Instant::now();
                     }
-                    let Ok(mut hover_active) = tray_hover_active.lock() else {
-                        return;
-                    };
-                    if *hover_active {
-                        return;
-                    }
-                    *hover_active = true;
                     let app = tray.app_handle().clone();
                     windows::show_hover_near_tray(&app, rect, position);
                     if !is_move {
@@ -131,9 +122,6 @@ pub fn setup_tray(
                     }
                 }
                 TrayIconEvent::Leave { .. } => {
-                    if let Ok(mut hover_active) = tray_hover_active.lock() {
-                        *hover_active = false;
-                    }
                     if let Some(window) = tray.app_handle().get_webview_window("hover") {
                         let _ = window.emit("hover://orb-leave", ());
                     }

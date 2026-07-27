@@ -105,6 +105,7 @@ pub fn run() {
             commands::app_icon_set_style,
             commands::quota_get_latest,
             commands::quota_refresh_all,
+            commands::quota_refresh_connection,
             commands::settings_get_display,
             commands::settings_save_display,
             commands::updater_check,

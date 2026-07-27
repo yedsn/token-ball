@@ -46,6 +46,10 @@ export function refreshAllQuota(): Promise<QuotaSummary> {
   return invoke("quota_refresh_all");
 }
 
+export function refreshConnectionQuota(connectionId: string): Promise<QuotaSummary> {
+  return invoke("quota_refresh_connection", { connectionId });
+}
+
 export function getDisplaySettings(): Promise<DisplaySettings> {
   return invoke("settings_get_display");
 }

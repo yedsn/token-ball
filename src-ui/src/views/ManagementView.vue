@@ -123,6 +123,8 @@ const settingsSectionOptions = computed(() => [
 ]);
 
 const currentProviderName = computed(() => providerLabel(form.providerType));
+const showTopbarRefresh = computed(() => page.value !== "orbSettings");
+const topbarRefreshDisabled = computed(() => store.refreshing || (page.value === "instance" ? !currentConnection.value : !store.hasConnection));
 const savedAccessKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasAccessKeyId ? "已保存，留空沿用" : "未保存");
 const savedSecretKeyLabel = computed(() => currentConnection.value?.providerConfigHint?.hasSecretAccessKey ? "已保存，留空沿用" : "未保存");
 const savedWebCookieLabel = computed(() => currentConnection.value?.providerConfigHint?.hasCodingWebCookie ? "已保存，留空沿用" : "未保存");
@@ -213,6 +215,16 @@ function selectConnection(connection: ProviderConnection) {
   form.qianwenCookie = "";
   notice.value = "";
   page.value = "instance";
+}
+
+async function refreshCurrentPage() {
+  if (page.value === "instance") {
+    const id = currentConnection.value?.id;
+    if (!id) return;
+    await store.refreshConnection(id);
+    return;
+  }
+  await store.refresh();
 }
 
 function newConnection(providerType: ProviderType = "cliProxyApi") {
@@ -636,9 +648,19 @@ function providerLabel(providerType: ProviderType) {
 }
 
 function providerHelp(providerType: ProviderType) {
-  if (providerType === "volcengine") return "官方渠道使用 GetUsageDetails 查询用量；页面渠道使用 GetCodingPlanUsage 查询额度、ListSubscribeTrade 查询到期时间。可以按计划类型拆成多个实例。";
+  if (providerType === "volcengine") return "官方渠道查询用量和套餐到期时间；页面渠道使用控制台 Cookie 查询额度和到期时间。可以按计划类型拆成多个实例。";
   if (providerType === "qianwen") return "优先使用千问官方控制台 API 查询 Token Plan 主套餐和加油包额度；需要从 platform.qianwenai.com 登录态请求里复制 Cookie。";
   return "这里需要 remote-management.secret-key 或 MANAGEMENT_PASSWORD，不是普通 API Key。";
+}
+
+function displayPlanName(account: QuotaAccount) {
+  return account.planName
+    .replace(/\s*·\s*GetAFPUsage\b/g, "")
+    .replace(/\s*·\s*GetCodingPlanUsage\b/g, "")
+    .replace(/\bGetAFPUsage\b/g, "")
+    .replace(/\bGetCodingPlanUsage\b/g, "")
+    .replace(/\s*·\s*$/g, "")
+    .trim() || "--";
 }
 
 function canTestConnection() {
@@ -906,8 +928,8 @@ async function openInstanceGuide() {
           <h1>{{ pageTitle }}</h1>
           <p>{{ pageDescription }}</p>
         </div>
-        <button v-if="page === 'instance'" type="button" class="topbar-help" @click="openInstanceGuide">
-          <Info :size="15" />使用说明
+        <button v-if="showTopbarRefresh" class="primary" @click="refreshCurrentPage" :disabled="topbarRefreshDisabled">
+          <RefreshCw :size="16" :class="{ spin: store.refreshing }" />立即刷新
         </button>
       </header>
 
@@ -960,7 +982,7 @@ async function openInstanceGuide() {
             <tbody>
               <tr v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" :class="balanceRowClass(row)">
                 <td><span class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</span></td>
-                <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}<template v-if="row.account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(row.account.subscriptionUntil)">到期 {{ dateLabel(row.account.subscriptionUntil) }}</em></template></span></td>
+                <td><strong>{{ row.account.displayName }}</strong><span>{{ displayPlanName(row.account) }} · {{ row.account.status }}<template v-if="row.account.subscriptionUntil"> · 到期 <em class="expiry" :class="expiryClass(row.account.subscriptionUntil)">{{ dateLabel(row.account.subscriptionUntil) }}</em></template></span></td>
                 <td>{{ balanceWindowName(row) }}</td>
                 <td><b>{{ balanceRemainingLabel(row) }}</b></td>
                 <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></td>
@@ -993,7 +1015,7 @@ async function openInstanceGuide() {
                     <div class="quota-card-head">
                       <div>
                         <strong>{{ account.displayName }}</strong>
-                        <span>{{ account.planName }} · {{ account.status }}<template v-if="account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(account.subscriptionUntil)">到期 {{ dateLabel(account.subscriptionUntil) }}</em></template></span>
+                        <span>{{ displayPlanName(account) }} · {{ account.status }}<template v-if="account.subscriptionUntil"> · 到期 <em class="expiry" :class="expiryClass(account.subscriptionUntil)">{{ dateLabel(account.subscriptionUntil) }}</em></template></span>
                       </div>
                       <b>{{ quotaLabel(account) }}</b>
                     </div>
@@ -1027,7 +1049,7 @@ async function openInstanceGuide() {
             </div>
             <div v-if="store.displaySettings.showAccountsInTooltip" class="display-pick-title">已选择账号信息</div>
             <div v-for="account in previewQuotaAccounts" :key="account.id" class="preview-line">
-              <span>{{ account.displayName }}</span><strong>{{ quotaLabel(account) }}</strong><small>{{ account.planName }}</small>
+              <span>{{ account.displayName }}</span><strong>{{ quotaLabel(account) }}</strong><small>{{ displayPlanName(account) }}</small>
             </div>
             <div v-for="item in enabledCustomItems" :key="item.id" class="preview-line">
               <span>{{ item.label || '自定义' }}</span><strong>{{ item.value || '--' }}</strong><small>手动内容</small>
@@ -1226,7 +1248,7 @@ async function openInstanceGuide() {
           </div>
           <div v-if="store.displaySettings.showAccountsInTooltip" class="display-pick-title">全部账号剩余额度</div>
           <div v-for="account in previewQuotaAccounts" :key="account.id" class="preview-line">
-            <span>{{ account.displayName }}</span><strong>{{ quotaLabel(account) }}</strong><small>{{ account.planName }}</small>
+            <span>{{ account.displayName }}</span><strong>{{ quotaLabel(account) }}</strong><small>{{ displayPlanName(account) }}</small>
           </div>
           <div v-for="item in enabledCustomItems" :key="item.id" class="preview-line">
             <span>{{ item.label || '自定义' }}</span><strong>{{ item.value || '--' }}</strong><small>手动内容</small>
@@ -1321,7 +1343,12 @@ async function openInstanceGuide() {
 
       <section v-else class="content-grid instance-grid">
         <form class="panel" @submit.prevent="save">
-          <h2>{{ form.id ? '编辑实例' : `新增${currentProviderName}实例` }}</h2>
+          <header class="panel-title-row">
+            <h2>{{ form.id ? '编辑实例' : `新增${currentProviderName}实例` }}</h2>
+            <button v-if="page === 'instance'" type="button" class="topbar-help" @click="openInstanceGuide">
+              <Info :size="15" />使用说明
+            </button>
+          </header>
           <label>Provider
             <select v-model="form.providerType" :disabled="Boolean(form.id)">
               <option value="cliProxyApi">CLIProxyAPI</option>
@@ -1385,7 +1412,7 @@ async function openInstanceGuide() {
               <div class="quota-card-head">
                 <div>
                   <strong>{{ account.displayName }}</strong>
-                  <span>{{ account.planName }} · {{ account.status }}<template v-if="account.maskedIdentifier"> · {{ account.maskedIdentifier }}</template><template v-if="account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(account.subscriptionUntil)">到期 {{ dateLabel(account.subscriptionUntil) }}</em></template></span>
+                  <span>{{ displayPlanName(account) }} · {{ account.status }}<template v-if="account.maskedIdentifier"> · {{ account.maskedIdentifier }}</template><template v-if="account.subscriptionUntil"> · 到期 <em class="expiry" :class="expiryClass(account.subscriptionUntil)">{{ dateLabel(account.subscriptionUntil) }}</em></template></span>
                 </div>
                 <b>{{ quotaLabel(account) }}</b>
               </div>

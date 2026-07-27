@@ -28,6 +28,7 @@ import {
   restartApp,
   setAppIconStyle,
   refreshAllQuota,
+  refreshConnectionQuota,
   readConnectionConfigBackup,
   setConnectionEnabled,
   saveDisplaySettings,
@@ -330,6 +331,15 @@ export const useTokenBallStore = defineStore("token-ball", {
       this.refreshing = true;
       try {
         this.summary = await refreshAllQuota();
+        if (!this.summary.stale) this.error = "";
+      } finally {
+        this.refreshing = false;
+      }
+    },
+    async refreshConnection(connectionId: string) {
+      this.refreshing = true;
+      try {
+        this.summary = await refreshConnectionQuota(connectionId);
         if (!this.summary.stale) this.error = "";
       } finally {
         this.refreshing = false;

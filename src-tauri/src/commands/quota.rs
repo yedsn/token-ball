@@ -31,6 +31,54 @@ pub async fn quota_refresh_all(
     refresh_all_internal(&app, &state).await.map_err(Into::into)
 }
 
+#[tauri::command]
+pub async fn quota_refresh_connection(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    connection_id: String,
+) -> Result<QuotaSummary, String> {
+    events::emit_refresh_started(&app);
+    let lock = {
+        let mut locks = state.sync_locks.lock().await;
+        locks
+            .entry(connection_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock().await;
+
+    let result = match sync_connection(&state, &connection_id).await {
+        Ok(_) => repository::update_connection_status(
+            &state.db,
+            &connection_id,
+            ConnectionStatus::Healthy,
+            Some(Utc::now()),
+        )
+        .await
+        .map_err(String::from),
+        Err(error) => {
+            let message = String::from(error);
+            events::emit_provider_error(&app, &message);
+            let _ = repository::update_connection_status(
+                &state.db,
+                &connection_id,
+                ConnectionStatus::Degraded,
+                None,
+            )
+            .await;
+            Err(message)
+        }
+    };
+
+    let summary = repository::load_summary(&state.db, result.is_err())
+        .await
+        .map_err(String::from)?;
+    events::emit_quota_updated(&app, &summary);
+    events::emit_refresh_completed(&app, &summary);
+    crate::tray::update_tray(&app, &summary).await;
+    result.map(|_| summary)
+}
+
 pub async fn refresh_all_internal(
     app: &AppHandle,
     state: &Arc<AppState>,
