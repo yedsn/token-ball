@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { Blocks, CheckCircle2, Clock3, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, Trash2, Upload, Wifi, X } from "lucide-vue-next";
+import { Blocks, CheckCircle2, Clock3, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, SlidersHorizontal, Trash2, Upload, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,7 +9,7 @@ import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, showWin
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
 
 type MainPage = "overview" | "orbSettings" | "instance";
-type SettingsSection = "appearance" | "plugins" | "backup" | "about";
+type SettingsSection = "general" | "appearance" | "plugins" | "backup" | "about";
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
 type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
@@ -97,13 +97,14 @@ const groupedAccounts = computed(() => {
 const currentConnectionAccounts = computed(() => store.summary.accounts.filter((account) => account.connectionId === form.id));
 
 const pageTitle = computed(() => {
-  if (page.value === "orbSettings") return "流量球设置";
+  if (page.value === "orbSettings") return "设置";
   if (page.value === "instance") return form.id ? "实例配置" : `新增 ${currentProviderName.value} 实例`;
   return "总览";
 });
 
 const pageDescription = computed(() => {
   if (page.value === "orbSettings") {
+    if (settingsSection.value === "general") return "配置自动同步等应用常规行为";
     if (settingsSection.value === "plugins") return "管理内置扩展和后续可安装插件的启停状态";
     if (settingsSection.value === "about") return "查看版本号并检查、下载、安装应用更新";
     return "配置流量球、悬浮面板和托盘悬停信息显示哪些内容";
@@ -113,6 +114,7 @@ const pageDescription = computed(() => {
 });
 
 const settingsSectionOptions = computed(() => [
+  { id: "general" as const, title: "常规", description: "自动刷新和基础行为", icon: SlidersHorizontal },
   { id: "appearance" as const, title: "外观", description: "额度、托盘图标和显示内容", icon: Paintbrush },
   { id: "plugins" as const, title: "插件", description: "安装、启停和删除扩展", icon: Blocks },
   { id: "backup" as const, title: "备份", description: "导出或导入实例配置", icon: Database },
@@ -1016,6 +1018,30 @@ async function startTitlebarDrag(event: PointerEvent) {
           </button>
         </aside>
 
+        <section v-if="settingsSection === 'general'" class="panel display-panel">
+          <h2>常规</h2>
+
+          <div class="setting-block">
+            <div class="setting-block-title">自动刷新</div>
+            <p class="setting-hint">后台会按这个间隔自动同步额度；手动刷新不受影响。</p>
+            <label class="interval-row">
+              <span><Clock3 :size="14" />刷新间隔</span>
+              <input type="number" min="1" max="1440" step="1" :value="syncIntervalMinutes" @change="updateSyncIntervalMinutes" />
+              <small>分钟</small>
+            </label>
+            <div class="segmented-control sync-presets">
+              <button
+                v-for="option in syncIntervalOptions"
+                :key="option.seconds"
+                :class="{ active: store.displaySettings.syncIntervalSeconds === option.seconds }"
+                @click="store.updateSyncIntervalSeconds(option.seconds)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section v-if="settingsSection === 'appearance'" class="panel display-panel">
           <h2>外观</h2>
 
@@ -1095,26 +1121,6 @@ async function startTitlebarDrag(event: PointerEvent) {
             <div class="segmented-control">
               <button :class="{ active: store.displaySettings.trayIconStyle === 'orb' }" @click="store.updateTrayIconStyle('orb')">能量球</button>
               <button :class="{ active: store.displaySettings.trayIconStyle === 'minimal' }" @click="store.updateTrayIconStyle('minimal')">简洁色块</button>
-            </div>
-          </div>
-
-          <div class="setting-block">
-            <div class="setting-block-title">自动刷新</div>
-            <p class="setting-hint">后台会按这个间隔自动同步额度；手动刷新不受影响。</p>
-            <label class="interval-row">
-              <span><Clock3 :size="14" />刷新间隔</span>
-              <input type="number" min="1" max="1440" step="1" :value="syncIntervalMinutes" @change="updateSyncIntervalMinutes" />
-              <small>分钟</small>
-            </label>
-            <div class="segmented-control sync-presets">
-              <button
-                v-for="option in syncIntervalOptions"
-                :key="option.seconds"
-                :class="{ active: store.displaySettings.syncIntervalSeconds === option.seconds }"
-                @click="store.updateSyncIntervalSeconds(option.seconds)"
-              >
-                {{ option.label }}
-              </button>
             </div>
           </div>
 
