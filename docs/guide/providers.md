@@ -22,7 +22,7 @@ TokenBall 当前支持 CLIProxyAPI、火山引擎和千问 Token Plan。所有�
 
 ### 官方渠道
 
-通过火山 OpenAPI 查询套餐和用量。
+通过火山 OpenAPI 查询套餐和用量。Coding Plan 个人版用量窗口来自 `GetUsageDetails`，TokenBall 会按 5 小时、近 7 天和近 30 天聚合展示。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -36,7 +36,7 @@ TokenBall 当前支持 CLIProxyAPI、火山引擎和千问 Token Plan。所有�
 
 ### 页面渠道
 
-通过控制台登录态 Cookie 查询页面接口，适合官方 OpenAPI 暂时无法覆盖的场景。
+通过控制台登录态 Cookie 查询页面接口，适合官方 OpenAPI 暂时无法覆盖的场景。页面渠道使用 `GetCodingPlanUsage` 读取额度窗口，并通过 `ListSubscribeTrade` 读取订阅到期时间。
 
 | 字段 | 说明 |
 | --- | --- |

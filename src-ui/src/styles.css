@@ -571,6 +571,14 @@ body,
   color: #ff5a54;
 }
 
+.expiry.healthy {
+  color: #19c37d;
+}
+
+.expiry.unknown {
+  color: #8fa19b;
+}
+
 .quota-bar-row em,
 .mini-bar em {
   color: #8fa19b;

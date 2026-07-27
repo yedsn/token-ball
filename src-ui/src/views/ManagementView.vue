@@ -636,7 +636,7 @@ function providerLabel(providerType: ProviderType) {
 }
 
 function providerHelp(providerType: ProviderType) {
-  if (providerType === "volcengine") return "官方渠道使用 Access Key 查询 OpenAPI；页面渠道使用控制台 Cookie 查询 Coding Plan 用量。可以按计划类型拆成多个实例。";
+  if (providerType === "volcengine") return "官方渠道使用 GetUsageDetails 查询用量；页面渠道使用 GetCodingPlanUsage 查询额度、ListSubscribeTrade 查询到期时间。可以按计划类型拆成多个实例。";
   if (providerType === "qianwen") return "优先使用千问官方控制台 API 查询 Token Plan 主套餐和加油包额度；需要从 platform.qianwenai.com 登录态请求里复制 Cookie。";
   return "这里需要 remote-management.secret-key 或 MANAGEMENT_PASSWORD，不是普通 API Key。";
 }
@@ -650,11 +650,13 @@ function canTestConnection() {
 }
 
 function expiryClass(value?: string | null) {
-  if (!value) return "";
-  const days = (new Date(value).getTime() - Date.now()) / 86400000;
+  if (!value) return "unknown";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time) || time <= 0) return "unknown";
+  const days = (time - Date.now()) / 86400000;
   if (days <= 3) return "critical";
   if (days <= 7) return "warning";
-  return "";
+  return "healthy";
 }
 
 function toggleTotal(event: Event) {
@@ -934,17 +936,17 @@ async function openInstanceGuide() {
         <section class="panel balance-ranking-panel">
           <header class="balance-ranking-head">
             <div>
-              <h2>全账号额度到期表</h2>
-              <p>每个账号一行，有月限额看月限额，否则按最高额度周期排序</p>
+              <h2>全账号额度重置表</h2>
+              <p>每个账号一行，有月限额看月限额，否则按最高额度周期排序；账号到期时间显示在账号信息里</p>
             </div>
             <span>{{ balanceExpiryRanking.length }} 个账号</span>
           </header>
-          <div v-if="!store.hasConnection" class="empty-state">保存实例后展示全账号额度到期表。</div>
+          <div v-if="!store.hasConnection" class="empty-state">保存实例后展示全账号额度重置表。</div>
           <div v-else-if="balanceExpiryRanking.length === 0" class="empty-state">暂无账号额度数据，点击立即刷新同步。</div>
           <table v-else class="balance-table">
             <thead>
               <tr>
-                <th>到期时间</th>
+                <th>重置时间</th>
                 <th>账号</th>
                 <th>优先额度</th>
                 <th>剩余</th>
@@ -958,7 +960,7 @@ async function openInstanceGuide() {
             <tbody>
               <tr v-for="row in balanceExpiryRanking" :key="`${row.account.id}-${row.window?.id ?? 'account'}`" :class="balanceRowClass(row)">
                 <td><span class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</span></td>
-                <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}</span></td>
+                <td><strong>{{ row.account.displayName }}</strong><span>{{ row.account.planName }} · {{ row.account.status }}<template v-if="row.account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(row.account.subscriptionUntil)">到期 {{ dateLabel(row.account.subscriptionUntil) }}</em></template></span></td>
                 <td>{{ balanceWindowName(row) }}</td>
                 <td><b>{{ balanceRemainingLabel(row) }}</b></td>
                 <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></td>
@@ -1383,7 +1385,7 @@ async function openInstanceGuide() {
               <div class="quota-card-head">
                 <div>
                   <strong>{{ account.displayName }}</strong>
-                  <span>{{ account.planName }} · {{ account.status }}<template v-if="account.maskedIdentifier"> · {{ account.maskedIdentifier }}</template></span>
+                  <span>{{ account.planName }} · {{ account.status }}<template v-if="account.maskedIdentifier"> · {{ account.maskedIdentifier }}</template><template v-if="account.subscriptionUntil"> · <em class="expiry" :class="expiryClass(account.subscriptionUntil)">到期 {{ dateLabel(account.subscriptionUntil) }}</em></template></span>
                 </div>
                 <b>{{ quotaLabel(account) }}</b>
               </div>

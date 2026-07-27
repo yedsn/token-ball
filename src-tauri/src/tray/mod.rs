@@ -10,6 +10,8 @@ use tauri::{
     Emitter, Manager,
 };
 
+use chrono::{DateTime, Utc};
+
 use crate::{
     app_state::AppState,
     commands,
@@ -260,7 +262,11 @@ fn tray_tooltip(summary: &QuotaSummary, settings: &DisplaySettings) -> String {
             let remaining = account_percent
                 .map(|value| format!("{:.0}%", value))
                 .unwrap_or_else(|| "未知".to_string());
-            lines.push(format!("- {}：{}", account.display_name, remaining));
+            let mut line = format!("- {}：{}", account.display_name, remaining);
+            if let Some(expiry) = account.subscription_until.map(format_date) {
+                line.push_str(&format!(" | 到期 {}", expiry));
+            }
+            lines.push(line);
         }
     }
 
@@ -274,6 +280,10 @@ fn tray_tooltip(summary: &QuotaSummary, settings: &DisplaySettings) -> String {
         lines.push("TokenBall：暂无显示内容".to_string());
     }
     lines.join("\n")
+}
+
+fn format_date(value: DateTime<Utc>) -> String {
+    value.format("%m-%d").to_string()
 }
 
 fn status_label(status: &ConnectionStatus) -> &'static str {

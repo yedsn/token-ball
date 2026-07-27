@@ -42,7 +42,9 @@ impl QianwenClient {
             config.qianwen_gateway_base_url = default_gateway_base_url();
         }
         if config.qianwen_cookie.is_none() {
-            return Err(AppError::Message("千问官方控制台 API 需要填写登录态 Cookie".to_string()));
+            return Err(AppError::Message(
+                "千问官方控制台 API 需要填写登录态 Cookie".to_string(),
+            ));
         }
         let base_url = if base_url.trim().is_empty() {
             Url::parse(&config.qianwen_gateway_base_url)?
@@ -173,7 +175,10 @@ impl QianwenClient {
             .header("Cache-Control", "no-cache, no-store, max-age=0")
             .header("Pragma", "no-cache")
             .header("Origin", "https://platform.qianwenai.com")
-            .header("Referer", "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual")
+            .header(
+                "Referer",
+                "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual",
+            )
             .header("Cookie", cookie)
             .form(&api_form(product, action, &sec_token, &params))
             .send()
@@ -212,7 +217,10 @@ impl QianwenClient {
             .header("Accept", "application/json, text/plain, */*")
             .header("Cache-Control", "no-cache, no-store, max-age=0")
             .header("Pragma", "no-cache")
-            .header("Referer", "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual")
+            .header(
+                "Referer",
+                "https://platform.qianwenai.com/home/billing/subscription/token-plan-individual",
+            )
             .header("Cookie", cookie)
             .send()
             .await?;
@@ -232,7 +240,9 @@ impl QianwenClient {
             .and_then(|value| value.as_str())
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| AppError::Message("千问 secToken 为空，请检查 Cookie 是否仍有效".to_string()))
+            .ok_or_else(|| {
+                AppError::Message("千问 secToken 为空，请检查 Cookie 是否仍有效".to_string())
+            })
     }
 
     fn api_url(&self, product: &str) -> AppResult<Url> {
@@ -244,7 +254,12 @@ impl QianwenClient {
     }
 }
 
-fn api_query(product: &str, action: &str, params: &Value, refresh_nonce: &str) -> Vec<(String, String)> {
+fn api_query(
+    product: &str,
+    action: &str,
+    params: &Value,
+    refresh_nonce: &str,
+) -> Vec<(String, String)> {
     let mut query = vec![
         ("product".to_string(), product.to_string()),
         ("action".to_string(), action.to_string()),
@@ -280,14 +295,24 @@ fn build_accounts(
     detail: Option<&Value>,
 ) -> Vec<QuotaAccount> {
     let mut accounts = Vec::new();
-    if let Some(account) = personal_usage_account(connection_id, product_code, usage, subscription, quota_config) {
+    if let Some(account) = personal_usage_account(
+        connection_id,
+        product_code,
+        usage,
+        subscription,
+        quota_config,
+    ) {
         accounts.push(account);
     }
     if let Some(data) = summary.and_then(|value| value.get("Data")) {
         let start_time = timestamp_millis(value_i64(data, &["StartTime"]));
         let end_time = timestamp_millis(value_i64(data, &["EndTime"]));
-        for (index, group) in array_at(data, &["SubscriptionGroupList"]).iter().enumerate() {
-            let spec_type = value_string(group, &["SpecType"]).unwrap_or_else(|| format!("seat-{index}"));
+        for (index, group) in array_at(data, &["SubscriptionGroupList"])
+            .iter()
+            .enumerate()
+        {
+            let spec_type =
+                value_string(group, &["SpecType"]).unwrap_or_else(|| format!("seat-{index}"));
             let windows = build_group_windows(group, end_time);
             let critical_window_id = critical_window_id(&windows);
             accounts.push(QuotaAccount {
@@ -315,7 +340,11 @@ fn build_accounts(
         }
     }
     if accounts.is_empty() {
-        accounts.push(placeholder_account(connection_id, product_code, "未返回 Token Plan 个人版用量"));
+        accounts.push(placeholder_account(
+            connection_id,
+            product_code,
+            "未返回 Token Plan 个人版用量",
+        ));
     }
     for (index, item) in addon_items(detail).iter().enumerate() {
         if let Some(account) = addon_account(connection_id, product_code, index, item) {
@@ -346,8 +375,10 @@ fn personal_usage_account(
     let weekly_total = quota_for_spec
         .and_then(|value| value_f64(value, &["weekly"]))
         .or(five_hour_total);
-    let start_time = timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["startTime"])));
-    let end_time = timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["endTime"])));
+    let start_time =
+        timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["startTime"])));
+    let end_time =
+        timestamp_millis(subscription_data.and_then(|value| value_i64(value, &["endTime"])));
     let mut windows = Vec::new();
     if let Some(window) = ratio_window(
         "qianwen-personal-5h",
@@ -424,7 +455,8 @@ fn ratio_window(
         reset_at,
         is_active: true,
         is_current_constraint: true,
-        data_source: "qianwen:sfm_bailian/BroadScopeAspnGateway/tokenplan-personal-usage".to_string(),
+        data_source: "qianwen:sfm_bailian/BroadScopeAspnGateway/tokenplan-personal-usage"
+            .to_string(),
     })
 }
 
@@ -555,7 +587,11 @@ fn placeholder_account(connection_id: &str, product_code: &str, message: &str) -
 fn critical_window_id(windows: &[QuotaWindow]) -> Option<String> {
     windows
         .iter()
-        .filter_map(|window| window.remaining_percent.map(|percent| (window.id.clone(), percent)))
+        .filter_map(|window| {
+            window
+                .remaining_percent
+                .map(|percent| (window.id.clone(), percent))
+        })
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(id, _)| id)
 }
@@ -660,7 +696,10 @@ mod tests {
 
     fn assert_approx(actual: Option<f64>, expected: f64) {
         let actual = actual.expect("expected numeric value");
-        assert!((actual - expected).abs() < 0.000001, "actual={actual}, expected={expected}");
+        assert!(
+            (actual - expected).abs() < 0.000001,
+            "actual={actual}, expected={expected}"
+        );
     }
 
     #[test]
@@ -683,9 +722,18 @@ mod tests {
           }
         }
         "#;
-        let usage: Value = serde_json::from_str(r#"{ "DataV2": { "data": { "data": {} } } }"#).unwrap();
+        let usage: Value =
+            serde_json::from_str(r#"{ "DataV2": { "data": { "data": {} } } }"#).unwrap();
         let summary: Value = serde_json::from_str(raw).unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, None, None, Some(&summary), None);
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            None,
+            None,
+            Some(&summary),
+            None,
+        );
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].external_id, "qianwen-token-plan:standard");
         assert_eq!(accounts[0].windows[0].remaining, Some(1500.0));
@@ -695,8 +743,10 @@ mod tests {
 
     #[test]
     fn maps_subscription_detail_addons() {
-        let usage: Value = serde_json::from_str(r#"{ "DataV2": { "data": { "data": {} } } }"#).unwrap();
-        let summary: Value = serde_json::from_str(r#"{ "Data": { "SubscriptionGroupList": [] } }"#).unwrap();
+        let usage: Value =
+            serde_json::from_str(r#"{ "DataV2": { "data": { "data": {} } } }"#).unwrap();
+        let summary: Value =
+            serde_json::from_str(r#"{ "Data": { "SubscriptionGroupList": [] } }"#).unwrap();
         let detail: Value = serde_json::from_str(
             r#"
             {
@@ -715,7 +765,15 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, None, None, Some(&summary), Some(&detail));
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            None,
+            None,
+            Some(&summary),
+            Some(&detail),
+        );
         assert_eq!(accounts.len(), 2);
         assert_eq!(accounts[1].display_name, "加油包 A");
         assert_eq!(accounts[1].windows[0].remaining_percent, Some(30.0));
@@ -774,7 +832,15 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            Some(&subscription),
+            Some(&quota_config),
+            None,
+            None,
+        );
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].external_id, "qianwen-token-plan-personal");
         assert_eq!(accounts[0].windows.len(), 2);
@@ -845,7 +911,15 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            Some(&subscription),
+            Some(&quota_config),
+            None,
+            None,
+        );
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].windows.len(), 2);
         assert_eq!(accounts[0].windows[0].total, Some(700.0));
@@ -889,7 +963,15 @@ mod tests {
             "#,
         )
         .unwrap();
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), None, None, None);
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            Some(&subscription),
+            None,
+            None,
+            None,
+        );
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].windows[0].total, Some(100.0));
         assert_eq!(accounts[0].windows[0].remaining, Some(50.0));
@@ -949,7 +1031,15 @@ mod tests {
         )
         .unwrap();
 
-        let accounts = build_accounts("conn", "token-plan", &usage, Some(&subscription), Some(&quota_config), None, None);
+        let accounts = build_accounts(
+            "conn",
+            "token-plan",
+            &usage,
+            Some(&subscription),
+            Some(&quota_config),
+            None,
+            None,
+        );
 
         assert_eq!(accounts[0].windows[0].used, Some(700.0));
         assert_eq!(accounts[0].windows[0].remaining, Some(0.0));
@@ -967,10 +1057,7 @@ mod tests {
         let query = api_query("sfm_bailian", "BroadScopeAspnGateway", &params, "nonce-1");
 
         assert!(query.contains(&("product".to_string(), "sfm_bailian".to_string())));
-        assert!(query.contains(&(
-            "action".to_string(),
-            "BroadScopeAspnGateway".to_string()
-        )));
+        assert!(query.contains(&("action".to_string(), "BroadScopeAspnGateway".to_string())));
         assert!(query.contains(&("_t".to_string(), "nonce-1".to_string())));
         assert!(query.contains(&(
             "api".to_string(),

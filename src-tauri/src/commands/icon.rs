@@ -27,8 +27,8 @@ fn image_from_data_url(data_url: &str) -> Result<Image<'static>, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload[1..].as_bytes())
         .map_err(|error| format!("图标 Base64 解码失败：{error}"))?;
-    let image = image::load_from_memory(&bytes)
-        .map_err(|error| format!("图标图片解析失败：{error}"))?;
+    let image =
+        image::load_from_memory(&bytes).map_err(|error| format!("图标图片解析失败：{error}"))?;
     let resized = image
         .resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
         .to_rgba8();

@@ -19,8 +19,8 @@
 | Provider | 适合场景 | 必填参数 | 默认地址 |
 | --- | --- | --- | --- |
 | CLIProxyAPI | 已用 CLIProxyAPI 管理多个 Codex 账号 | 服务地址、管理 Key | `http://127.0.0.1:8317` |
-| 火山引擎官方渠道 | 使用火山 OpenAPI 查询 Coding Plan / Agent Plan | Access Key ID、Secret Access Key | `https://open.volcengineapi.com` |
-| 火山引擎页面渠道 | OpenAPI 暂时无法覆盖，需要用控制台登录态查询 | 控制台 Cookie | `https://console.volcengine.com/api/top` |
+| 火山引擎官方渠道 | 使用火山 OpenAPI 查询 Coding Plan / Agent Plan 用量 | Access Key ID、Secret Access Key | `https://open.volcengineapi.com` |
+| 火山引擎页面渠道 | 使用控制台登录态查询用量和订阅到期时间 | 控制台 Cookie | `https://console.volcengine.com/api/top` |
 | 千问 Token Plan | 查询千问个人版 Token Plan 5 小时和每周窗口 | 控制台 Cookie | `https://platform-home.qianwenai.com` |
 
 ## CLIProxyAPI
@@ -52,11 +52,11 @@
 
 ## 火山引擎
 
-火山引擎支持官方渠道和页面渠道。官方渠道优先使用 OpenAPI，适合长期稳定接入；页面渠道使用控制台登录态 Cookie，适合临时补足 OpenAPI 未覆盖的数据。
+火山引擎支持官方渠道和页面渠道。官方渠道优先使用 OpenAPI，适合长期稳定接入；页面渠道使用控制台登录态 Cookie，适合补足 OpenAPI 未覆盖的用量或订阅到期数据。
 
 ### 官方渠道
 
-通过火山 OpenAPI 查询套餐和用量。
+通过火山 OpenAPI 查询套餐和用量。TokenBall 当前把官方渠道的 Coding Plan 用量从 `GetUsageDetails` 读取。
 
 | 参数 | 从哪里获取 | 填写建议 |
 | --- | --- | --- |
@@ -72,7 +72,7 @@
 
 ### 页面渠道
 
-页面渠道通过已登录控制台的请求 Cookie 查询 Coding Plan 用量。
+页面渠道通过已登录控制台的请求 Cookie 查询 Coding Plan 用量和订阅到期时间。TokenBall 当前把用量从 `GetCodingPlanUsage` 读取，把到期时间从 `ListSubscribeTrade` 读取。
 
 | 参数 | 从哪里获取 | 填写建议 |
 | --- | --- | --- |

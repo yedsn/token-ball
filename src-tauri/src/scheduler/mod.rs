@@ -12,7 +12,8 @@ pub fn start_quota_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let state = app.state::<Arc<AppState>>();
         let mut last_refresh = Instant::now();
-        let mut scheduled_interval = Duration::from_secs(crate::quota::default_sync_interval_seconds());
+        let mut scheduled_interval =
+            Duration::from_secs(crate::quota::default_sync_interval_seconds());
         let mut last_config: Option<(u64, bool, u64, u64)> = None;
         loop {
             let settings = repository::load_display_settings(&state.db)

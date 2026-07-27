@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::process::Command;
+use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
 use url::Url;

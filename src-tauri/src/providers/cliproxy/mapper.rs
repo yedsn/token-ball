@@ -67,19 +67,7 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
                 success_count: integer_field(item, &["success", "success_count", "successCount"]),
                 failed_count: integer_field(item, &["failed", "failed_count", "failedCount"]),
                 recent_requests: map_recent_requests(item),
-                subscription_until: item
-                    .get("id_token")
-                    .and_then(|token| {
-                        date_field(
-                            token,
-                            &[
-                                "chatgpt_subscription_active_until",
-                                "subscription_until",
-                                "expires_at",
-                            ],
-                        )
-                    })
-                    .or_else(|| date_field(item, &["subscription_until", "expires_at"])),
+                subscription_until: subscription_until(item),
                 chatgpt_account_id: item.get("id_token").and_then(|token| {
                     string_field(
                         token,
@@ -260,11 +248,69 @@ fn bool_field(value: &Value, keys: &[&str]) -> Option<bool> {
         .find_map(|key| value.get(*key).and_then(Value::as_bool))
 }
 
+fn subscription_until(item: &Value) -> Option<DateTime<Utc>> {
+    const TOKEN_KEYS: &[&str] = &[
+        "chatgpt_subscription_active_until",
+        "subscription_until",
+        "subscriptionUntil",
+        "expires_at",
+        "expiresAt",
+        "expire_at",
+        "expireAt",
+        "end_time",
+        "endTime",
+    ];
+    const ACCOUNT_KEYS: &[&str] = &[
+        "chatgpt_subscription_active_until",
+        "subscription_until",
+        "subscriptionUntil",
+        "expires_at",
+        "expiresAt",
+        "expire_at",
+        "expireAt",
+        "expired_at",
+        "expiredAt",
+        "renewal_at",
+        "renewalAt",
+        "renew_at",
+        "renewAt",
+        "end_time",
+        "endTime",
+        "valid_until",
+        "validUntil",
+    ];
+
+    item.get("id_token")
+        .and_then(|token| date_field(token, TOKEN_KEYS))
+        .or_else(|| date_field(item, ACCOUNT_KEYS))
+}
+
 fn date_field(value: &Value, keys: &[&str]) -> Option<DateTime<Utc>> {
     keys.iter()
-        .find_map(|key| value.get(*key).and_then(Value::as_str))
-        .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
-        .map(|dt| dt.with_timezone(&Utc))
+        .find_map(|key| value.get(*key).and_then(parse_datetime_value))
+}
+
+fn parse_datetime_value(value: &Value) -> Option<DateTime<Utc>> {
+    if let Some(raw) = value.as_str() {
+        if let Ok(dt) = DateTime::parse_from_rfc3339(raw) {
+            return Some(dt.with_timezone(&Utc));
+        }
+        if let Ok(timestamp) = raw.parse::<i64>() {
+            return timestamp_datetime(timestamp);
+        }
+    }
+    value.as_i64().and_then(timestamp_datetime)
+}
+
+fn timestamp_datetime(value: i64) -> Option<DateTime<Utc>> {
+    if value <= 0 {
+        return None;
+    }
+    if value > 10_000_000_000 {
+        DateTime::from_timestamp_millis(value)
+    } else {
+        DateTime::from_timestamp(value, 0)
+    }
 }
 
 fn normalize_percent(value: f64) -> f64 {
@@ -294,5 +340,28 @@ mod tests {
         let accounts = map_auth_files("c", &json!({ "data": [{ "email": "name@example.com" }] }));
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].plan_name, "Codex Plus");
+    }
+
+    #[test]
+    fn maps_subscription_until_aliases_and_timestamps() {
+        let accounts = map_auth_files(
+            "c",
+            &json!({
+                "data": [
+                    { "email": "one@example.com", "subscriptionUntil": "2026-08-29T15:59:59Z" },
+                    { "email": "two@example.com", "endTime": 1788019199000_i64 }
+                ]
+            }),
+        );
+
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(
+            accounts[0].subscription_until.unwrap().to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
+        assert_eq!(
+            accounts[1].subscription_until.unwrap().to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
     }
 }

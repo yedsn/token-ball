@@ -103,13 +103,24 @@ impl VolcengineClient {
         let mut accounts = Vec::new();
         if self.config.sync_agent_plan && !self.is_web_channel() {
             let usage = self.get_afp_usage().await?;
+            let plan = self.get_personal_plan("AgentPlan").await.ok();
             let plan_type = usage
                 .result
                 .plan_type
                 .as_ref()
                 .cloned()
+                .or_else(|| plan.as_ref().and_then(|plan| plan.result.plan_type.clone()))
                 .unwrap_or_else(|| "Agent Plan".to_string());
             let windows = build_windows(&usage.result);
+            let subscription_until = plan
+                .as_ref()
+                .and_then(|plan| plan.result.end_time.as_deref())
+                .and_then(parse_rfc3339);
+            let status = match plan.as_ref().and_then(|plan| plan.result.status.as_deref()) {
+                Some("Running") | None => AccountStatus::Available,
+                Some("Expired") => AccountStatus::Exhausted,
+                _ => AccountStatus::Unknown,
+            };
             accounts.push(QuotaAccount {
                 id: format!("{connection_id}:volcengine-afp"),
                 connection_id: connection_id.to_string(),
@@ -117,21 +128,25 @@ impl VolcengineClient {
                 display_name: "Agent Plan AFP".to_string(),
                 masked_identifier: Some(mask_ak(&self.config.access_key_id)),
                 plan_name: format!("{plan_type} · GetAFPUsage"),
-                status: AccountStatus::Available,
+                status,
                 critical_window_id: critical_window_id(&windows),
                 next_reset_at: windows.iter().filter_map(|window| window.reset_at).min(),
                 windows,
                 success_count: None,
                 failed_count: None,
                 recent_requests: Vec::new(),
-                subscription_until: None,
+                subscription_until,
                 chatgpt_account_id: None,
                 synced_at: Utc::now(),
             });
         } else if self.config.sync_agent_plan && self.is_web_channel() {
+            let subscription = self.get_agent_subscribe_trade_from_web().await.ok();
             accounts.push(agent_placeholder_account(
                 connection_id,
                 "页面渠道暂未接入 Agent Plan 接口".to_string(),
+                subscription
+                    .as_ref()
+                    .and_then(subscribe_trade_subscription_until),
             ));
         }
 
@@ -194,7 +209,19 @@ impl VolcengineClient {
 
     async fn personal_coding_plan_account(&self, connection_id: &str) -> AppResult<QuotaAccount> {
         let plan = self.get_personal_plan("CodingPlan").await?;
-        let windows = self.personal_coding_usage_detail_windows().await?;
+        let hourly_details = self.get_usage_details("Hour", 1).await?;
+        let daily_details = self.get_usage_details("Day", 30).await?;
+        let windows = build_personal_coding_windows(
+            &hourly_details.result.details,
+            &daily_details.result.details,
+            Utc::now(),
+        );
+        let subscription_until = plan
+            .result
+            .end_time
+            .and_then(|value| parse_rfc3339(&value))
+            .or_else(|| usage_details_subscription_until(&hourly_details.result))
+            .or_else(|| usage_details_subscription_until(&daily_details.result));
         let status = match plan.result.status.as_deref() {
             Some("Running") => AccountStatus::Available,
             Some("Expired") => AccountStatus::Exhausted,
@@ -226,7 +253,7 @@ impl VolcengineClient {
             success_count: None,
             failed_count: None,
             recent_requests: Vec::new(),
-            subscription_until: plan.result.end_time.and_then(|value| parse_rfc3339(&value)),
+            subscription_until,
             chatgpt_account_id: None,
             synced_at: Utc::now(),
         })
@@ -234,6 +261,7 @@ impl VolcengineClient {
 
     async fn web_coding_plan_account(&self, connection_id: &str) -> AppResult<QuotaAccount> {
         let usage = self.get_coding_plan_usage_from_web().await?;
+        let subscription = self.get_subscribe_trade_from_web().await.ok();
         let windows = usage
             .result
             .as_ref()
@@ -241,6 +269,15 @@ impl VolcengineClient {
             .unwrap_or_default();
         let critical_window_id = critical_window_id(&windows);
         let next_reset_at = windows.iter().filter_map(|window| window.reset_at).min();
+        let subscription_until = subscription
+            .as_ref()
+            .and_then(subscribe_trade_subscription_until)
+            .or_else(|| {
+                usage
+                    .result
+                    .as_ref()
+                    .and_then(web_coding_subscription_until)
+            });
         Ok(QuotaAccount {
             id: format!("{connection_id}:volcengine-coding-plan-web"),
             connection_id: connection_id.to_string(),
@@ -255,20 +292,10 @@ impl VolcengineClient {
             success_count: None,
             failed_count: None,
             recent_requests: Vec::new(),
-            subscription_until: None,
+            subscription_until,
             chatgpt_account_id: None,
             synced_at: Utc::now(),
         })
-    }
-
-    async fn personal_coding_usage_detail_windows(&self) -> AppResult<Vec<QuotaWindow>> {
-        let hourly_details = self.get_usage_details("Hour", 1).await?;
-        let daily_details = self.get_usage_details("Day", 30).await?;
-        Ok(build_personal_coding_windows(
-            &hourly_details.result.details,
-            &daily_details.result.details,
-            Utc::now(),
-        ))
     }
 
     async fn get_afp_usage(&self) -> AppResult<GetAfpUsageResponse> {
@@ -357,6 +384,112 @@ impl VolcengineClient {
         serde_json::from_str(&text).map_err(|error| {
             AppError::Message(format!(
                 "火山控制台 Coding Plan 响应不是有效 JSON：{}；响应前 500 字符：{}",
+                error,
+                text.chars().take(500).collect::<String>()
+            ))
+        })
+    }
+
+    async fn get_subscribe_trade_from_web(&self) -> AppResult<Value> {
+        let cookie = self
+            .config
+            .coding_web_cookie
+            .as_deref()
+            .ok_or_else(|| AppError::Message("火山控制台 Cookie 为空".to_string()))?;
+        let base_url = self
+            .config
+            .coding_web_base_url
+            .as_deref()
+            .unwrap_or("https://console.volcengine.com/api/top");
+        let region = self.config.region.trim();
+        let service = self.config.service.trim();
+        let url = build_web_console_action_url(base_url, service, region, "ListSubscribeTrade")?;
+        let body = serde_json::json!({
+            "ResourceTypes": ["CodingPlan"],
+            "ResourceNames": [""],
+            "BizInfos": ["lite"]
+        })
+        .to_string();
+        let csrf_token = extract_cookie_value(cookie, "csrfToken").unwrap_or_default();
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Origin", "https://console.volcengine.com")
+            .header(
+                "Referer",
+                "https://console.volcengine.com/ark/region:cn-beijing/model-settings/coding-plan",
+            )
+            .header("Cookie", cookie)
+            .header("x-csrf-token", csrf_token)
+            .body(body)
+            .send()
+            .await?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(AppError::Message(format!(
+                "火山控制台 ListSubscribeTrade 接口返回 HTTP {}：{}",
+                status, text
+            )));
+        }
+        serde_json::from_str(&text).map_err(|error| {
+            AppError::Message(format!(
+                "火山控制台 ListSubscribeTrade 响应不是有效 JSON：{}；响应前 500 字符：{}",
+                error,
+                text.chars().take(500).collect::<String>()
+            ))
+        })
+    }
+
+    async fn get_agent_subscribe_trade_from_web(&self) -> AppResult<Value> {
+        let cookie = self
+            .config
+            .coding_web_cookie
+            .as_deref()
+            .ok_or_else(|| AppError::Message("火山控制台 Cookie 为空".to_string()))?;
+        let base_url = self
+            .config
+            .coding_web_base_url
+            .as_deref()
+            .unwrap_or("https://console.volcengine.com/api/top");
+        let region = self.config.region.trim();
+        let service = self.config.service.trim();
+        let url = build_web_console_action_url(base_url, service, region, "ListSubscribeTrade")?;
+        let body = serde_json::json!({
+            "ResourceTypes": ["AgentPlan"],
+            "ResourceNames": ["RealAgentPlanPersonal"],
+            "BizInfos": ["small", "medium", "large", "xlarge"]
+        })
+        .to_string();
+        let csrf_token = extract_cookie_value(cookie, "csrfToken").unwrap_or_default();
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Origin", "https://console.volcengine.com")
+            .header(
+                "Referer",
+                "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan",
+            )
+            .header("Cookie", cookie)
+            .header("x-csrf-token", csrf_token)
+            .body(body)
+            .send()
+            .await?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(AppError::Message(format!(
+                "火山控制台 Agent Plan 订阅接口返回 HTTP {}：{}",
+                status, text
+            )));
+        }
+        serde_json::from_str(&text).map_err(|error| {
+            AppError::Message(format!(
+                "火山控制台 Agent Plan 订阅响应不是有效 JSON：{}；响应前 500 字符：{}",
                 error,
                 text.chars().take(500).collect::<String>()
             ))
@@ -564,6 +697,7 @@ struct GetUsageDetailsResponse {
 struct UsageDetailsResult {
     #[serde(default)]
     details: Vec<UsageDetailItem>,
+    end_time: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -618,6 +752,10 @@ struct WebCodingPlanUsageResult {
     #[serde(default)]
     quota_usage: Vec<WebCodingQuotaUsage>,
     update_timestamp: Option<i64>,
+    end_time: Option<Value>,
+    expire_time: Option<Value>,
+    expired_time: Option<Value>,
+    subscription_end_time: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -791,6 +929,63 @@ fn build_web_coding_windows(result: &WebCodingPlanUsageResult) -> Vec<QuotaWindo
         .collect()
 }
 
+fn web_coding_subscription_until(result: &WebCodingPlanUsageResult) -> Option<DateTime<Utc>> {
+    result
+        .end_time
+        .as_ref()
+        .or(result.expire_time.as_ref())
+        .or(result.expired_time.as_ref())
+        .or(result.subscription_end_time.as_ref())
+        .and_then(parse_datetime_value)
+}
+
+fn usage_details_subscription_until(result: &UsageDetailsResult) -> Option<DateTime<Utc>> {
+    result.end_time.as_ref().and_then(parse_datetime_value)
+}
+
+fn subscribe_trade_subscription_until(value: &Value) -> Option<DateTime<Utc>> {
+    let mut dates = Vec::new();
+    if let Some(info_list) = value.get("InfoList") {
+        collect_subscription_dates(info_list, &mut dates);
+    }
+    if dates.is_empty() {
+        collect_subscription_dates(value, &mut dates);
+    }
+    dates.into_iter().min()
+}
+
+fn collect_subscription_dates(value: &Value, dates: &mut Vec<DateTime<Utc>>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_subscription_dates(item, dates);
+            }
+        }
+        Value::Object(map) => {
+            for key in [
+                "EndTime",
+                "endTime",
+                "ExpireTime",
+                "expireTime",
+                "ExpiredTime",
+                "expiredTime",
+                "SubscriptionEndTime",
+                "subscriptionEndTime",
+                "ValidUntil",
+                "validUntil",
+            ] {
+                if let Some(date) = map.get(key).and_then(parse_datetime_value) {
+                    dates.push(date);
+                }
+            }
+            for child in map.values() {
+                collect_subscription_dates(child, dates);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn web_coding_window(
     item: &WebCodingQuotaUsage,
     update_timestamp: Option<i64>,
@@ -952,7 +1147,11 @@ fn coding_placeholder_account(connection_id: &str, plan_name: String) -> QuotaAc
     }
 }
 
-fn agent_placeholder_account(connection_id: &str, plan_name: String) -> QuotaAccount {
+fn agent_placeholder_account(
+    connection_id: &str,
+    plan_name: String,
+    subscription_until: Option<DateTime<Utc>>,
+) -> QuotaAccount {
     QuotaAccount {
         id: format!("{connection_id}:volcengine-afp"),
         connection_id: connection_id.to_string(),
@@ -967,7 +1166,7 @@ fn agent_placeholder_account(connection_id: &str, plan_name: String) -> QuotaAcc
         success_count: None,
         failed_count: None,
         recent_requests: Vec::new(),
-        subscription_until: None,
+        subscription_until,
         chatgpt_account_id: None,
         synced_at: Utc::now(),
     }
@@ -1027,14 +1226,23 @@ fn extract_cookie_value(cookie_header: &str, name: &str) -> Option<String> {
     None
 }
 
-fn build_web_coding_usage_url(base_url: &str, service: &str, region: &str) -> AppResult<Url> {
+fn build_web_console_action_url(
+    base_url: &str,
+    service: &str,
+    region: &str,
+    action: &str,
+) -> AppResult<Url> {
     let base_url = if base_url.ends_with('/') {
         base_url.to_string()
     } else {
         format!("{base_url}/")
     };
-    let path = format!("{service}/{region}/2024-01-01/GetCodingPlanUsage");
+    let path = format!("{service}/{region}/2024-01-01/{action}");
     Ok(Url::parse(&base_url)?.join(&path)?)
+}
+
+fn build_web_coding_usage_url(base_url: &str, service: &str, region: &str) -> AppResult<Url> {
+    build_web_console_action_url(base_url, service, region, "GetCodingPlanUsage")
 }
 
 fn timestamp_seconds_or_millis(value: i64) -> Option<DateTime<Utc>> {
@@ -1043,6 +1251,25 @@ fn timestamp_seconds_or_millis(value: i64) -> Option<DateTime<Utc>> {
     } else {
         Utc.timestamp_opt(value, 0).single()
     }
+}
+
+fn parse_datetime_value(value: &Value) -> Option<DateTime<Utc>> {
+    if let Some(raw) = value.as_str() {
+        if let Some(dt) = parse_rfc3339(raw) {
+            return Some(dt);
+        }
+        if let Ok(timestamp) = raw.parse::<i64>() {
+            return timestamp_seconds_or_millis(timestamp);
+        }
+    }
+    value
+        .as_i64()
+        .and_then(timestamp_seconds_or_millis)
+        .or_else(|| {
+            value
+                .as_f64()
+                .and_then(|number| timestamp_seconds_or_millis(number as i64))
+        })
 }
 
 fn parse_rfc3339(value: &str) -> Option<DateTime<Utc>> {
@@ -1187,6 +1414,34 @@ mod tests {
     }
 
     #[test]
+    fn parses_agent_plan_from_get_personal_plan() {
+        let raw = r#"
+        {
+          "ResponseMetadata": { "Action": "GetPersonalPlan" },
+          "Result": {
+            "PlanType": "small",
+            "Status": "Running",
+            "StartTime": "2026-05-28T17:38:56Z",
+            "EndTime": "2026-08-29T15:59:59Z",
+            "AutoRenew": true
+          }
+        }
+        "#;
+        let plan: GetPersonalPlanResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(plan.result.plan_type.as_deref(), Some("small"));
+        assert_eq!(plan.result.status.as_deref(), Some("Running"));
+        assert_eq!(
+            plan.result
+                .end_time
+                .as_deref()
+                .and_then(parse_rfc3339)
+                .unwrap()
+                .to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
+    }
+
+    #[test]
     fn parses_list_seat_info_usages_windows() {
         let raw = r#"
         {
@@ -1265,6 +1520,7 @@ mod tests {
         {
           "ResponseMetadata": { "Action": "GetUsageDetails" },
           "Result": {
+            "EndTime": "2026-08-29T15:59:59Z",
             "Details": [
               { "Time": 1783094400000, "ObjectName": "glm-5.2", "Usage": 1000, "Unit": "Tokens", "BillingType": "WithinPlan" },
               { "Time": 1783094400000, "ObjectName": "glm-5.2", "Usage": 200, "Unit": "Tokens", "BillingType": "OutsideOfPlan" }
@@ -1284,6 +1540,12 @@ mod tests {
         assert_eq!(windows[1].used, Some(1000.0));
         assert_eq!(windows[2].name, "近 30 天");
         assert_eq!(windows[2].used, Some(1000.0));
+        assert_eq!(
+            usage_details_subscription_until(&usage.result)
+                .unwrap()
+                .to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
     }
 
     #[test]
@@ -1291,8 +1553,9 @@ mod tests {
         let raw = r#"
         {
           "ResponseMetadata": { "Action": "GetCodingPlanUsage" },
-          "Result": {
+            "Result": {
             "Status": "Running",
+            "EndTime": "2026-08-29T15:59:59Z",
             "QuotaUsage": [
               { "Level": "monthly", "Percent": 13.14, "ResetTimestamp": 1787327999 },
               { "Level": "session", "Percent": 0, "ResetTimestamp": -1 },
@@ -1303,7 +1566,8 @@ mod tests {
         }
         "#;
         let response: WebCodingPlanUsageResponse = serde_json::from_str(raw).unwrap();
-        let windows = build_web_coding_windows(response.result.as_ref().unwrap());
+        let result = response.result.as_ref().unwrap();
+        let windows = build_web_coding_windows(result);
         assert_eq!(windows.len(), 3);
         assert_eq!(windows[0].name, "当前会话");
         assert_eq!(windows[0].used, Some(0.0));
@@ -1313,6 +1577,42 @@ mod tests {
         assert_eq!(windows[1].total, Some(100.0));
         assert!(windows[1].remaining_percent.unwrap() > 62.0);
         assert_eq!(windows[2].name, "近 1 月");
+        assert_eq!(
+            web_coding_subscription_until(result).unwrap().to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
+    }
+
+    #[test]
+    fn parses_list_subscribe_trade_subscription_until() {
+        let raw = serde_json::json!({
+            "ResponseMetadata": { "Action": "ListSubscribeTrade" },
+            "Result": {
+                "InfoList": [
+                    {
+                        "ResourceType": "CodingPlan",
+                        "ResourceName": "",
+                        "BizInfo": "lite",
+                        "PayType": "pre",
+                        "Status": "Running",
+                        "InstanceID": "tsi-20260529013841-8lzd9",
+                        "StartTime": "2026-05-28T17:38:56Z",
+                        "EndTime": "2026-08-29T15:59:59Z",
+                        "EnableAutoRenew": true,
+                        "AutoRenewTimes": 1,
+                        "RemainAutoRenewNums": -1,
+                        "Quantity": 1,
+                        "Period": "monthly"
+                    }
+                ]
+            }
+        });
+        assert_eq!(
+            subscribe_trade_subscription_until(raw.pointer("/Result").unwrap())
+                .unwrap()
+                .to_rfc3339(),
+            "2026-08-29T15:59:59+00:00"
+        );
     }
 
     #[test]

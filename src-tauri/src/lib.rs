@@ -37,11 +37,12 @@ pub fn run() {
         let initial_settings = storage::repository::load_display_settings(&db)
             .await
             .unwrap_or_default();
-        let main_window_state = storage::repository::get_setting(&db, windows::MAIN_WINDOW_STATE_KEY)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|value| windows::parse_main_window_state(&value));
+        let main_window_state =
+            storage::repository::get_setting(&db, windows::MAIN_WINDOW_STATE_KEY)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|value| windows::parse_main_window_state(&value));
         Ok::<_, String>((
             Arc::new(AppState::new(db, main_window_state)),
             initial_summary,

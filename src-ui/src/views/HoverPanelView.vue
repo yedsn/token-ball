@@ -159,6 +159,20 @@ function balanceResetClass(row: BalanceRankingRow) {
   return "healthy";
 }
 
+function accountExpiryLabel(account: QuotaAccount) {
+  return reset(account.subscriptionUntil);
+}
+
+function accountExpiryClass(account: QuotaAccount) {
+  if (!account.subscriptionUntil) return "unknown";
+  const time = new Date(account.subscriptionUntil).getTime();
+  if (!Number.isFinite(time) || time <= 0) return "unknown";
+  const days = (time - Date.now()) / 86400000;
+  if (days <= 3) return "critical";
+  if (days <= 7) return "warning";
+  return "healthy";
+}
+
 function windowPercent(window: QuotaWindow) {
   return typeof window.remainingPercent === "number" ? Math.round(window.remainingPercent) : null;
 }
@@ -348,7 +362,8 @@ onUnmounted(() => {
             <span><em>月</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></span>
           </div>
           <div class="hover-secondary-row">
-            <span>到期 <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
+            <span>重置 <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
+            <span v-if="row.account.subscriptionUntil">到期 <b class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b></span>
             <span>{{ balanceWindowName(row) }}</span>
             <span>{{ balanceUsageLabel(row) }}</span>
             <span>{{ accountConnectionLabel(row.account) }}</span>

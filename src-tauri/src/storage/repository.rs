@@ -6,10 +6,10 @@ use crate::{
     error::{AppError, AppResult},
     quota::{
         build_summary, default_sync_interval_seconds, mask_secret, parse_account_status,
-        parse_connection_status, parse_period_type, parse_provider_type, parse_quota_unit, ConnectionBackup, ConnectionInput,
-        ConfigBackup, ImportConfigResult,
-        ConnectionStatus, DisplaySettings, ProviderConnection, QuotaAccount, QuotaSummary,
-        QuotaWindow, RequestActivity,
+        parse_connection_status, parse_period_type, parse_provider_type, parse_quota_unit,
+        ConfigBackup, ConnectionBackup, ConnectionInput, ConnectionStatus, DisplaySettings,
+        ImportConfigResult, ProviderConnection, QuotaAccount, QuotaSummary, QuotaWindow,
+        RequestActivity,
     },
 };
 
@@ -179,7 +179,10 @@ pub async fn import_connections_backup(
 ) -> AppResult<ImportConfigResult> {
     let expected_schema = "token-ball.connection-backup.v1";
     if backup.schema != expected_schema {
-        return Err(AppError::Message(format!("备份文件版本不受支持：{}", backup.schema)));
+        return Err(AppError::Message(format!(
+            "备份文件版本不受支持：{}",
+            backup.schema
+        )));
     }
 
     let mut imported = 0usize;
@@ -224,7 +227,9 @@ pub async fn import_connections_backup(
         }
         query.execute(pool).await?;
     } else {
-        sqlx::query("DELETE FROM provider_connections").execute(pool).await?;
+        sqlx::query("DELETE FROM provider_connections")
+            .execute(pool)
+            .await?;
     }
 
     Ok(ImportConfigResult {
@@ -861,7 +866,9 @@ mod tests {
 
     async fn memory_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        crate::storage::database::run_migrations_for_test(&pool).await.unwrap();
+        crate::storage::database::run_migrations_for_test(&pool)
+            .await
+            .unwrap();
         pool
     }
 
@@ -944,7 +951,10 @@ fn provider_config_hint(
     provider_type: &crate::quota::ProviderType,
     raw_secret: &str,
 ) -> Option<crate::quota::ProviderConfigHint> {
-    if !matches!(provider_type, crate::quota::ProviderType::Volcengine | crate::quota::ProviderType::Qianwen) {
+    if !matches!(
+        provider_type,
+        crate::quota::ProviderType::Volcengine | crate::quota::ProviderType::Qianwen
+    ) {
         return None;
     }
     let value: serde_json::Value = serde_json::from_str(raw_secret).ok()?;
