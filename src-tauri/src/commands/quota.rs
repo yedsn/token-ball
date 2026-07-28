@@ -73,6 +73,7 @@ pub async fn quota_refresh_connection(
     let summary = repository::load_summary(&state.db, result.is_err())
         .await
         .map_err(String::from)?;
+    emit_connections_updated(&app, &state).await;
     events::emit_quota_updated(&app, &summary);
     events::emit_refresh_completed(&app, &summary);
     crate::tray::update_tray(&app, &summary).await;
@@ -126,10 +127,17 @@ pub async fn refresh_all_internal(
     }
 
     let summary = repository::load_summary(&state.db, any_error.is_some()).await?;
+    emit_connections_updated(app, state).await;
     events::emit_quota_updated(app, &summary);
     events::emit_refresh_completed(app, &summary);
     crate::tray::update_tray(app, &summary).await;
     Ok(summary)
+}
+
+async fn emit_connections_updated(app: &AppHandle, state: &Arc<AppState>) {
+    if let Ok(connections) = repository::list_connections(&state.db).await {
+        events::emit_connections_updated(app, &connections);
+    }
 }
 
 async fn sync_connection(state: &Arc<AppState>, connection_id: &str) -> AppResult<()> {

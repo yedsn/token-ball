@@ -136,6 +136,8 @@ const totalRemainingLabel = computed(() => {
   return `${Math.round(percent)}%`;
 });
 
+const quotaUpdatedLabel = computed(() => syncedLabel(store.summary.lastSyncedAt));
+
 const equivalentLabel = computed(() => `${store.totalEquivalentAccounts.toFixed(2)} 账号`);
 const enabledAccountCountLabel = computed(() => `${store.enabledAccounts.length} / ${store.summary.totalAccounts}`);
 const appIconOptions = computed(() => [
@@ -830,6 +832,13 @@ function syncedLabel(value?: string | null) {
   return label === "--" ? "更新于 --" : `更新于 ${label}`;
 }
 
+function syncTimeClass(value?: string | null) {
+  if (!value) return "";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time) || time <= 0) return "";
+  return Date.now() - time > 60 * 60 * 1000 ? "stale" : "";
+}
+
 function activityLabel(account: QuotaAccount) {
   if (account.windows.length === 0) return "--";
   const latest = account.recentRequests?.[account.recentRequests.length - 1];
@@ -947,6 +956,10 @@ async function openInstanceGuide() {
             <span>连接状态</span>
             <strong>{{ store.summary.status }}</strong>
           </article>
+          <article>
+            <span>额度更新</span>
+            <strong class="metric-timestamp">{{ quotaUpdatedLabel }}</strong>
+          </article>
         </section>
 
         <div v-if="store.connectionError || store.error" class="error-banner">
@@ -1029,6 +1042,7 @@ async function openInstanceGuide() {
                       </div>
                     </div>
                     <span v-else class="muted">{{ activityLabel(account) }}</span>
+                    <div class="quota-card-sync-line">更新 <em :class="syncTimeClass(account.syncedAt)">{{ resetLabel(account.syncedAt) }}</em></div>
                   </article>
                   <div v-if="group.accounts.length === 0" class="empty-state">该实例暂无账号数据。</div>
                 </section>

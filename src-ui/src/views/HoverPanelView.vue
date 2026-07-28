@@ -233,6 +233,13 @@ function reset(value?: string | null) {
   return new Date(value).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit", month: "2-digit", day: "2-digit" });
 }
 
+function syncTimeClass(value?: string | null) {
+  if (!value) return "";
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time) || time <= 0) return "";
+  return Date.now() - time > 60 * 60 * 1000 ? "stale" : "";
+}
+
 function showDelayed() {
   pointerInsidePanel.value = true;
   visible.value = true;
@@ -354,19 +361,24 @@ onUnmounted(() => {
               <strong>{{ row.account.displayName }}</strong>
               <span>{{ row.account.planName }} · {{ row.account.status }}</span>
             </div>
-            <b class="dense-total-value">{{ balanceRemainingLabel(row) }}</b>
+            <div class="dense-quota-metric">
+              <b class="dense-total-value">{{ balanceRemainingLabel(row) }}</b>
+            </div>
           </div>
           <div class="hover-period-row">
             <span><em>5 小时</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></span>
             <span><em>周</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></span>
             <span><em>月</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></span>
           </div>
-          <div class="hover-secondary-row">
+          <div class="hover-meta-row">
+            <span>窗口 {{ balanceWindowName(row) }}</span>
+            <span>用量 {{ balanceUsageLabel(row) }}</span>
+            <span>实例 {{ accountConnectionLabel(row.account) }}</span>
+          </div>
+          <div class="hover-time-row">
             <span>重置 <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
-            <span v-if="row.account.subscriptionUntil">到期 <b class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b></span>
-            <span>{{ balanceWindowName(row) }}</span>
-            <span>{{ balanceUsageLabel(row) }}</span>
-            <span>{{ accountConnectionLabel(row.account) }}</span>
+            <span>到期 <b v-if="row.account.subscriptionUntil" class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b><b v-else class="balance-reset unknown">--</b></span>
+            <span class="hover-sync-time">更新 <em :class="syncTimeClass(row.account.syncedAt)">{{ reset(row.account.syncedAt) }}</em></span>
           </div>
         </article>
       </div>
@@ -384,7 +396,7 @@ onUnmounted(() => {
 
     <footer class="hover-panel-foot">
       <span :class="{ stale: store.summary.stale }">{{ store.summary.stale ? '缓存数据' : '最新数据' }}</span>
-      <span>同步 {{ reset(store.summary.lastSyncedAt) }}</span>
+      <span>额度更新 {{ reset(store.summary.lastSyncedAt) }}</span>
     </footer>
   </main>
 </template>

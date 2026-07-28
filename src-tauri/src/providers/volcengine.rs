@@ -1250,6 +1250,9 @@ fn percent_encode(value: &str) -> String {
 }
 
 fn timestamp_millis(value: i64) -> Option<DateTime<Utc>> {
+    if value <= 0 {
+        return None;
+    }
     Utc.timestamp_millis_opt(value).single()
 }
 
@@ -1285,6 +1288,9 @@ fn build_web_coding_usage_url(base_url: &str, service: &str, region: &str) -> Ap
 }
 
 fn timestamp_seconds_or_millis(value: i64) -> Option<DateTime<Utc>> {
+    if value <= 0 {
+        return None;
+    }
     if value > 10_000_000_000 {
         Utc.timestamp_millis_opt(value).single()
     } else {

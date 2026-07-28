@@ -355,9 +355,12 @@ body,
 .dense-account-title,
 .dense-account-title strong,
 .dense-account-title span,
+.dense-quota-metric,
+.dense-quota-metric span,
 .hover-period-row span,
 .hover-period-row b,
-.hover-secondary-row span,
+.hover-meta-row span,
+.hover-time-row span,
 .dense-total-value {
   min-width: 0;
   overflow: hidden;
@@ -385,6 +388,24 @@ body,
   font-size: 24px;
   font-weight: 800;
   line-height: 1;
+}
+
+.dense-quota-metric {
+  display: grid;
+  align-self: end;
+  justify-items: end;
+  text-align: right;
+}
+
+.dense-quota-metric em,
+.quota-card-sync-line em {
+  font-style: normal;
+}
+
+.dense-quota-metric em.stale,
+.quota-card-sync-line em.stale,
+.hover-sync-time em.stale {
+  color: #ff5a54;
 }
 
 .hover-period-row {
@@ -416,20 +437,31 @@ body,
   font-weight: 700;
 }
 
-.hover-secondary-row {
+.hover-meta-row,
+.hover-time-row {
   display: grid;
-  grid-template-columns: minmax(72px, 0.85fr) minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 0.95fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
   min-width: 0;
 }
 
-.hover-secondary-row span {
+.hover-meta-row span,
+.hover-time-row span {
   color: #72837d;
   font-size: 10px;
 }
 
-.hover-secondary-row b {
+.hover-time-row b {
   font-size: 10px;
+}
+
+.hover-sync-time {
+  justify-self: start;
+  text-align: left;
+}
+
+.hover-sync-time em {
+  font-style: normal;
 }
 
 .hover-dense-row.healthy .dense-total-value,
@@ -871,7 +903,7 @@ body,
 }
 
 .metrics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 24px 0;
 }
 
@@ -890,6 +922,11 @@ body,
 
 .metrics strong {
   font-size: 28px;
+}
+
+.metrics .metric-timestamp {
+  font-size: 20px;
+  line-height: 1.25;
 }
 
 .error-banner {
@@ -1748,10 +1785,19 @@ button:disabled {
 .quota-card-head > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
-.quota-card-head b {
+.quota-card-head > b {
   font-size: 22px;
+}
+
+.quota-card-sync-line {
+  color: #8fa19b;
+  font-size: 11px;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .preview-line {
