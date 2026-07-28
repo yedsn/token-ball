@@ -371,14 +371,14 @@ onUnmounted(() => {
             <span><em>月</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></span>
           </div>
           <div class="hover-meta-row">
-            <span>窗口 {{ balanceWindowName(row) }}</span>
-            <span>用量 {{ balanceUsageLabel(row) }}</span>
-            <span>实例 {{ accountConnectionLabel(row.account) }}</span>
+            <span><em>窗口</em><b>{{ balanceWindowName(row) }}</b></span>
+            <span><em>用量</em><b>{{ balanceUsageLabel(row) }}</b></span>
+            <span><em>实例</em><b>{{ accountConnectionLabel(row.account) }}</b></span>
           </div>
           <div class="hover-time-row">
-            <span>重置 <b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
-            <span>到期 <b v-if="row.account.subscriptionUntil" class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b><b v-else class="balance-reset unknown">--</b></span>
-            <span class="hover-sync-time">更新 <em :class="syncTimeClass(row.account.syncedAt)">{{ reset(row.account.syncedAt) }}</em></span>
+            <span><em>重置</em><b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
+            <span><em>到期</em><b v-if="row.account.subscriptionUntil" class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b><b v-else class="balance-reset unknown">--</b></span>
+            <span class="hover-sync-time"><em>更新</em><b :class="syncTimeClass(row.account.syncedAt)">{{ reset(row.account.syncedAt) }}</b></span>
           </div>
         </article>
       </div>

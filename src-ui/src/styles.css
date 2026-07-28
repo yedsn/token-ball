@@ -404,7 +404,7 @@ body,
 
 .dense-quota-metric em.stale,
 .quota-card-sync-line em.stale,
-.hover-sync-time em.stale {
+.hover-sync-time b.stale {
   color: #ff5a54;
 }
 
@@ -447,8 +447,30 @@ body,
 
 .hover-meta-row span,
 .hover-time-row span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
   color: #72837d;
   font-size: 10px;
+}
+
+.hover-meta-row em,
+.hover-time-row em {
+  flex: 0 0 auto;
+  color: #72837d;
+  font-style: normal;
+}
+
+.hover-meta-row b,
+.hover-time-row b {
+  min-width: 0;
+  overflow: hidden;
+  color: #8fa19b;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hover-time-row b {
@@ -456,12 +478,7 @@ body,
 }
 
 .hover-sync-time {
-  justify-self: start;
-  text-align: left;
-}
-
-.hover-sync-time em {
-  font-style: normal;
+  justify-self: stretch;
 }
 
 .hover-dense-row.healthy .dense-total-value,
