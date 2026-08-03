@@ -29,12 +29,22 @@ const orbReloadCooldownMs = 1200;
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
-    const leftTime = balanceResetTime(left);
-    const rightTime = balanceResetTime(right);
-    if (leftTime === null && rightTime === null) return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
-    if (leftTime === null) return 1;
-    if (rightTime === null) return -1;
-    if (leftTime !== rightTime) return leftTime - rightTime;
+    const leftResetTime = balanceResetTime(left);
+    const rightResetTime = balanceResetTime(right);
+    if (leftResetTime !== rightResetTime) {
+      if (leftResetTime === null) return 1;
+      if (rightResetTime === null) return -1;
+      return leftResetTime - rightResetTime;
+    }
+
+    const leftExpiryTime = accountExpiryTime(left.account);
+    const rightExpiryTime = accountExpiryTime(right.account);
+    if (leftExpiryTime !== rightExpiryTime) {
+      if (leftExpiryTime === null) return 1;
+      if (rightExpiryTime === null) return -1;
+      return leftExpiryTime - rightExpiryTime;
+    }
+
     return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
   });
 });
@@ -127,6 +137,12 @@ function balanceResetTime(row: BalanceRankingRow) {
   const value = row.window?.resetAt ?? row.account.nextResetAt;
   if (!value) return null;
   const time = new Date(value).getTime();
+  return Number.isFinite(time) && time > 0 ? time : null;
+}
+
+function accountExpiryTime(account: QuotaAccount) {
+  if (!account.subscriptionUntil) return null;
+  const time = new Date(account.subscriptionUntil).getTime();
   return Number.isFinite(time) && time > 0 ? time : null;
 }
 

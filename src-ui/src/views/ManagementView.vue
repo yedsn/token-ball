@@ -70,18 +70,30 @@ const providerGroups = computed(() => [
 ]);
 
 const currentConnection = computed(() => store.connections.find((connection) => connection.id === form.id) ?? null);
-const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip ? store.enabledAccounts : []));
+const previewQuotaAccounts = computed(() => (store.displaySettings.showAccountsInTooltip
+  ? [...store.enabledAccounts].sort((left, right) => compareQuotaAccounts(left, right))
+  : []));
 const enabledCustomItems = computed(() => store.displaySettings.customItems.filter((item) => item.enabled));
 const appVersionLabel = computed(() => store.updater.currentVersion || __APP_VERSION__);
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
-    const leftTime = balanceResetTime(left);
-    const rightTime = balanceResetTime(right);
-    if (leftTime === null && rightTime === null) return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
-    if (leftTime === null) return 1;
-    if (rightTime === null) return -1;
-    if (leftTime !== rightTime) return leftTime - rightTime;
+    const leftResetTime = balanceResetTime(left);
+    const rightResetTime = balanceResetTime(right);
+    if (leftResetTime !== rightResetTime) {
+      if (leftResetTime === null) return 1;
+      if (rightResetTime === null) return -1;
+      return leftResetTime - rightResetTime;
+    }
+
+    const leftExpiryTime = accountExpiryTime(left.account);
+    const rightExpiryTime = accountExpiryTime(right.account);
+    if (leftExpiryTime !== rightExpiryTime) {
+      if (leftExpiryTime === null) return 1;
+      if (rightExpiryTime === null) return -1;
+      return leftExpiryTime - rightExpiryTime;
+    }
+
     return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
   });
 });
@@ -91,11 +103,15 @@ const groupedAccounts = computed(() => {
     title: provider.title,
     groups: provider.connections.filter((connection) => connection.enabled).map((connection) => ({
       connection,
-      accounts: store.enabledAccounts.filter((account) => account.connectionId === connection.id)
+      accounts: store.enabledAccounts
+        .filter((account) => account.connectionId === connection.id)
+        .sort((left, right) => compareQuotaAccounts(left, right))
     }))
   })).filter((provider) => provider.groups.length > 0);
 });
-const currentConnectionAccounts = computed(() => store.summary.accounts.filter((account) => account.connectionId === form.id));
+const currentConnectionAccounts = computed(() => store.summary.accounts
+  .filter((account) => account.connectionId === form.id)
+  .sort((left, right) => compareQuotaAccounts(left, right)));
 
 const pageTitle = computed(() => {
   if (page.value === "orbSettings") return "设置";
@@ -562,6 +578,39 @@ function accountPeriodRemainingClass(account: QuotaAccount, period: BalancePerio
 
 function balanceResetTime(row: BalanceRankingRow) {
   const value = row.window?.resetAt ?? row.account.nextResetAt;
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time > 0 ? time : null;
+}
+
+function accountExpiryTime(account: QuotaAccount) {
+  if (!account.subscriptionUntil) return null;
+  const time = new Date(account.subscriptionUntil).getTime();
+  return Number.isFinite(time) && time > 0 ? time : null;
+}
+
+function compareQuotaAccounts(left: QuotaAccount, right: QuotaAccount) {
+  const leftResetTime = accountResetTime(left);
+  const rightResetTime = accountResetTime(right);
+  if (leftResetTime !== rightResetTime) {
+    if (leftResetTime === null) return 1;
+    if (rightResetTime === null) return -1;
+    return leftResetTime - rightResetTime;
+  }
+
+  const leftExpiryTime = accountExpiryTime(left);
+  const rightExpiryTime = accountExpiryTime(right);
+  if (leftExpiryTime !== rightExpiryTime) {
+    if (leftExpiryTime === null) return 1;
+    if (rightExpiryTime === null) return -1;
+    return leftExpiryTime - rightExpiryTime;
+  }
+
+  return left.displayName.localeCompare(right.displayName, "zh-CN");
+}
+
+function accountResetTime(account: QuotaAccount) {
+  const value = primaryExpiryWindow(account)?.resetAt ?? account.nextResetAt;
   if (!value) return null;
   const time = new Date(value).getTime();
   return Number.isFinite(time) && time > 0 ? time : null;
