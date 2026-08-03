@@ -29,20 +29,20 @@ const orbReloadCooldownMs = 1200;
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
-    const leftResetTime = balanceResetTime(left);
-    const rightResetTime = balanceResetTime(right);
-    if (leftResetTime !== rightResetTime) {
-      if (leftResetTime === null) return 1;
-      if (rightResetTime === null) return -1;
-      return leftResetTime - rightResetTime;
-    }
-
     const leftExpiryTime = accountExpiryTime(left.account);
     const rightExpiryTime = accountExpiryTime(right.account);
     if (leftExpiryTime !== rightExpiryTime) {
       if (leftExpiryTime === null) return 1;
       if (rightExpiryTime === null) return -1;
       return leftExpiryTime - rightExpiryTime;
+    }
+
+    const leftResetTime = balanceResetTime(left);
+    const rightResetTime = balanceResetTime(right);
+    if (leftResetTime !== rightResetTime) {
+      if (leftResetTime === null) return 1;
+      if (rightResetTime === null) return -1;
+      return leftResetTime - rightResetTime;
     }
 
     return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");

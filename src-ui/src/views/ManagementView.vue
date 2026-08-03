@@ -590,20 +590,20 @@ function accountExpiryTime(account: QuotaAccount) {
 }
 
 function compareQuotaAccounts(left: QuotaAccount, right: QuotaAccount) {
-  const leftResetTime = accountResetTime(left);
-  const rightResetTime = accountResetTime(right);
-  if (leftResetTime !== rightResetTime) {
-    if (leftResetTime === null) return 1;
-    if (rightResetTime === null) return -1;
-    return leftResetTime - rightResetTime;
-  }
-
   const leftExpiryTime = accountExpiryTime(left);
   const rightExpiryTime = accountExpiryTime(right);
   if (leftExpiryTime !== rightExpiryTime) {
     if (leftExpiryTime === null) return 1;
     if (rightExpiryTime === null) return -1;
     return leftExpiryTime - rightExpiryTime;
+  }
+
+  const leftResetTime = accountResetTime(left);
+  const rightResetTime = accountResetTime(right);
+  if (leftResetTime !== rightResetTime) {
+    if (leftResetTime === null) return 1;
+    if (rightResetTime === null) return -1;
+    return leftResetTime - rightResetTime;
   }
 
   return left.displayName.localeCompare(right.displayName, "zh-CN");
