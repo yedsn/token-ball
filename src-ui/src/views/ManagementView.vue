@@ -78,20 +78,20 @@ const appVersionLabel = computed(() => store.updater.currentVersion || __APP_VER
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
   const rows: BalanceRankingRow[] = store.enabledAccounts.map((account) => ({ account, window: primaryExpiryWindow(account) }));
   return rows.sort((left, right) => {
-    const leftResetTime = balanceResetTime(left);
-    const rightResetTime = balanceResetTime(right);
-    if (leftResetTime !== rightResetTime) {
-      if (leftResetTime === null) return 1;
-      if (rightResetTime === null) return -1;
-      return leftResetTime - rightResetTime;
-    }
-
     const leftExpiryTime = accountExpiryTime(left.account);
     const rightExpiryTime = accountExpiryTime(right.account);
     if (leftExpiryTime !== rightExpiryTime) {
       if (leftExpiryTime === null) return 1;
       if (rightExpiryTime === null) return -1;
       return leftExpiryTime - rightExpiryTime;
+    }
+
+    const leftResetTime = balanceResetTime(left);
+    const rightResetTime = balanceResetTime(right);
+    if (leftResetTime !== rightResetTime) {
+      if (leftResetTime === null) return 1;
+      if (rightResetTime === null) return -1;
+      return leftResetTime - rightResetTime;
     }
 
     return left.account.displayName.localeCompare(right.account.displayName, "zh-CN");
@@ -941,13 +941,22 @@ async function openInstanceGuide() {
           <line x1="256" y1="180" x2="256" y2="144" stroke="#38BDF8" stroke-width="24" stroke-linecap="round"/>
         </svg>
         <svg v-else viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
-          <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-          <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
-          <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
-          <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+          <defs>
+            <linearGradient id="brandMeterRim" x1="144" y1="112" x2="376" y2="400" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+              <stop offset="42%" stop-color="#E5E7EB"/>
+              <stop offset="100%" stop-color="#94A3B8"/>
+            </linearGradient>
+            <linearGradient id="brandMeterInnerRim" x1="176" y1="148" x2="344" y2="364" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.16"/>
+              <stop offset="100%" stop-color="#020617" stop-opacity="0.28"/>
+            </linearGradient>
+          </defs>
+          <rect width="512" height="512" rx="96" fill="#111827"/>
+          <circle cx="256" cy="256" r="150" fill="none" stroke="url(#brandMeterRim)" stroke-width="28"/>
+          <circle cx="256" cy="256" r="130" fill="none" stroke="url(#brandMeterInnerRim)" stroke-width="10"/>
+          <circle cx="214" cy="198" r="22" fill="#FFFFFF" opacity="0.32"/>
+          <path d="M140 274C178 256 210 256 256 274C302 292 334 292 372 274" fill="none" stroke="#60A5FA" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
       <button class="nav" :class="{ active: page === 'overview' }" @click="openPage('overview')"><Gauge :size="16" />总览</button>
@@ -1211,13 +1220,22 @@ async function openInstanceGuide() {
               >
                 <span class="app-icon-preview">
                   <svg v-if="option.id === 'meter'" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
-                    <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-                    <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
-                    <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
-                    <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+                    <defs>
+                      <linearGradient id="previewMeterRim" x1="144" y1="112" x2="376" y2="400" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+                        <stop offset="42%" stop-color="#E5E7EB"/>
+                        <stop offset="100%" stop-color="#94A3B8"/>
+                      </linearGradient>
+                      <linearGradient id="previewMeterInnerRim" x1="176" y1="148" x2="344" y2="364" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.16"/>
+                        <stop offset="100%" stop-color="#020617" stop-opacity="0.28"/>
+                      </linearGradient>
+                    </defs>
+                    <rect width="512" height="512" rx="96" fill="#111827"/>
+                    <circle cx="256" cy="256" r="150" fill="none" stroke="url(#previewMeterRim)" stroke-width="28"/>
+                    <circle cx="256" cy="256" r="130" fill="none" stroke="url(#previewMeterInnerRim)" stroke-width="10"/>
+                    <circle cx="214" cy="198" r="22" fill="#FFFFFF" opacity="0.32"/>
+                    <path d="M140 274C178 256 210 256 256 274C302 292 334 292 372 274" fill="none" stroke="#60A5FA" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <svg v-else-if="option.id === 'orb'" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <rect width="512" height="512" rx="96" fill="#0F172A"/>
@@ -1228,13 +1246,22 @@ async function openInstanceGuide() {
                   </svg>
                   <img v-else-if="store.displaySettings.customAppIconDataUrl" :src="store.displaySettings.customAppIconDataUrl" alt="" />
                   <svg v-else viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect width="512" height="512" rx="96" fill="#1E1B4B"/>
-                    <path d="M132 286 A124 124 0 0 1 380 286" fill="none" stroke="#E0E7FF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-                    <line x1="256" y1="286" x2="326" y2="214" stroke="#A78BFA" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="256" cy="286" r="26" fill="#A78BFA"/>
-                    <line x1="156" y1="354" x2="356" y2="354" stroke="#E0E7FF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="182" cy="354" r="12" fill="#A78BFA"/>
-                    <circle cx="330" cy="354" r="12" fill="#A78BFA"/>
+                    <defs>
+                      <linearGradient id="fallbackMeterRim" x1="144" y1="112" x2="376" y2="400" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+                        <stop offset="42%" stop-color="#E5E7EB"/>
+                        <stop offset="100%" stop-color="#94A3B8"/>
+                      </linearGradient>
+                      <linearGradient id="fallbackMeterInnerRim" x1="176" y1="148" x2="344" y2="364" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.16"/>
+                        <stop offset="100%" stop-color="#020617" stop-opacity="0.28"/>
+                      </linearGradient>
+                    </defs>
+                    <rect width="512" height="512" rx="96" fill="#111827"/>
+                    <circle cx="256" cy="256" r="150" fill="none" stroke="url(#fallbackMeterRim)" stroke-width="28"/>
+                    <circle cx="256" cy="256" r="130" fill="none" stroke="url(#fallbackMeterInnerRim)" stroke-width="10"/>
+                    <circle cx="214" cy="198" r="22" fill="#FFFFFF" opacity="0.32"/>
+                    <path d="M140 274C178 256 210 256 256 274C302 292 334 292 372 274" fill="none" stroke="#60A5FA" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </span>
                 <span class="app-icon-copy">
