@@ -12,6 +12,7 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
     let now = Utc::now();
     values
         .into_iter()
+        .filter(|item| auth_file_enabled(item))
         .enumerate()
         .map(|(index, item)| {
             let external_id = string_field(
@@ -83,6 +84,23 @@ pub fn map_auth_files(connection_id: &str, payload: &Value) -> Vec<QuotaAccount>
             }
         })
         .collect()
+}
+
+fn auth_file_enabled(item: &Value) -> bool {
+    if bool_field(item, &["disabled"]).unwrap_or(false) {
+        return false;
+    }
+    if !bool_field(item, &["enabled"]).unwrap_or(true) {
+        return false;
+    }
+
+    !matches!(
+        string_field(item, &["status", "state"])
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "disabled"
+    )
 }
 
 fn extract_array(payload: &Value) -> Vec<&Value> {
@@ -340,6 +358,25 @@ mod tests {
         let accounts = map_auth_files("c", &json!({ "data": [{ "email": "name@example.com" }] }));
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].plan_name, "Codex Plus");
+    }
+
+    #[test]
+    fn filters_disabled_accounts() {
+        let accounts = map_auth_files(
+            "c",
+            &json!({
+                "data": [
+                    { "email": "enabled@example.com", "enabled": true },
+                    { "email": "disabled-flag@example.com", "disabled": true },
+                    { "email": "disabled-enabled@example.com", "enabled": false },
+                    { "email": "disabled-status@example.com", "status": "disabled" },
+                    { "email": "disabled-state@example.com", "state": "disabled" }
+                ]
+            }),
+        );
+
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].external_id, "enabled@example.com");
     }
 
     #[test]
