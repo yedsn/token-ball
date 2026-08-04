@@ -899,8 +899,7 @@ function activityLabel(account: QuotaAccount) {
 }
 
 function dateLabel(value?: string | null) {
-  if (!value) return "";
-  return new Date(value).toLocaleDateString("zh-CN");
+  return resetLabel(value);
 }
 
 async function startTitlebarDrag(event: PointerEvent) {

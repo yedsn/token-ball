@@ -336,7 +336,7 @@ fn tray_tooltip(summary: &QuotaSummary, settings: &DisplaySettings) -> String {
 }
 
 fn format_date(value: DateTime<Utc>) -> String {
-    value.format("%m-%d").to_string()
+    value.format("%m-%d %H:%M").to_string()
 }
 
 fn status_label(status: &ConnectionStatus) -> &'static str {
