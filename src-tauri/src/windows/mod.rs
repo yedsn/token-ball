@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 use crate::{app_state::AppState, events, storage::repository};
 
 pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
+const MAIN_WINDOW_MIN_WIDTH: u32 = 900;
+const MAIN_WINDOW_MIN_HEIGHT: u32 = 620;
 const DEFAULT_HOVER_WIDTH: i32 = 520;
 const DEFAULT_HOVER_HEIGHT: i32 = 470;
 
@@ -82,14 +84,20 @@ pub fn parse_main_window_state(value: &str) -> Option<MainWindowState> {
 fn main_window_state(window: &WebviewWindow) -> Option<MainWindowState> {
     let size = window.outer_size().ok()?;
     let position = window.outer_position().ok()?;
-    Some(MainWindowState {
+    Some(normalize_main_window_state(MainWindowState {
         width: size.width,
         height: size.height,
         x: position.x,
         y: position.y,
         maximized: window.is_maximized().unwrap_or(false),
         fullscreen: window.is_fullscreen().unwrap_or(false),
-    })
+    }))
+}
+
+fn normalize_main_window_state(mut state: MainWindowState) -> MainWindowState {
+    state.width = state.width.max(MAIN_WINDOW_MIN_WIDTH);
+    state.height = state.height.max(MAIN_WINDOW_MIN_HEIGHT);
+    state
 }
 
 fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
@@ -102,6 +110,7 @@ fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
     let Some(saved) = saved else {
         return;
     };
+    let saved = normalize_main_window_state(saved);
     let _ = window.unmaximize();
     let _ = window.set_fullscreen(false);
     let _ = window.set_size(tauri::PhysicalSize::new(saved.width, saved.height));
@@ -260,5 +269,22 @@ mod tests {
 
         assert_eq!(anchor, PhysicalPosition::new(500, 600));
         assert_eq!(width, 0);
+    }
+
+    #[test]
+    fn main_window_state_enforces_minimum_size() {
+        let state = normalize_main_window_state(MainWindowState {
+            width: 320,
+            height: 240,
+            x: 10,
+            y: 20,
+            maximized: false,
+            fullscreen: false,
+        });
+
+        assert_eq!(state.width, MAIN_WINDOW_MIN_WIDTH);
+        assert_eq!(state.height, MAIN_WINDOW_MIN_HEIGHT);
+        assert_eq!(state.x, 10);
+        assert_eq!(state.y, 20);
     }
 }
