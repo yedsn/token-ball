@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 use crate::{app_state::AppState, events, storage::repository};
 
 pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
+const MAIN_WINDOW_DEFAULT_WIDTH: u32 = 1080;
+const MAIN_WINDOW_DEFAULT_HEIGHT: u32 = 720;
 const MAIN_WINDOW_MIN_WIDTH: u32 = 900;
 const MAIN_WINDOW_MIN_HEIGHT: u32 = 620;
 const DEFAULT_HOVER_WIDTH: i32 = 520;
@@ -121,6 +123,25 @@ fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
     if saved.fullscreen {
         let _ = window.set_fullscreen(true);
     }
+}
+
+pub fn reset_main_window(app: &AppHandle) {
+    hide_window(app, "hover");
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let _ = window.unminimize();
+    let _ = window.unmaximize();
+    let _ = window.set_fullscreen(false);
+    let _ = window.set_size(tauri::PhysicalSize::new(
+        MAIN_WINDOW_DEFAULT_WIDTH,
+        MAIN_WINDOW_DEFAULT_HEIGHT,
+    ));
+    let _ = window.center();
+    let _ = window.show();
+    let _ = window.set_focus();
+    save_main_window_state(app, &window);
 }
 
 pub fn show_hover_near_tray(app: &AppHandle, rect: Rect, fallback: PhysicalPosition<f64>) {
