@@ -7,7 +7,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager,
+    Emitter, Manager, Rect,
 };
 
 use chrono::{DateTime, Utc};
@@ -22,7 +22,8 @@ use crate::{
 
 const TRAY_ID: &str = "token-ball";
 const HOVER_MOVE_THROTTLE: Duration = Duration::from_millis(120);
-const HOVER_SHOW_DELAY: Duration = Duration::from_millis(320);
+const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300);
+const TRAY_MENU_SUPPRESS_HOVER: Duration = Duration::from_millis(1200);
 
 #[derive(Debug)]
 struct TrayHoverState {
@@ -30,6 +31,8 @@ struct TrayHoverState {
     pending_show: bool,
     shown: bool,
     last_move: Instant,
+    last_rect: Rect,
+    suppress_until: Instant,
 }
 
 pub fn setup_tray(
@@ -42,6 +45,8 @@ pub fn setup_tray(
         pending_show: false,
         shown: false,
         last_move: Instant::now() - HOVER_MOVE_THROTTLE,
+        last_rect: Rect::default(),
+        suppress_until: Instant::now(),
     }));
     let show_orb = MenuItem::with_id(app, "show_orb", "显示额度", true, None::<&str>)?;
     let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏额度", true, None::<&str>)?;
@@ -112,6 +117,13 @@ pub fn setup_tray(
                     windows::hide_window(tray.app_handle(), "hover");
                     windows::open_main_overview(tray.app_handle());
                 }
+                TrayIconEvent::Click {
+                    button: MouseButton::Right,
+                    ..
+                } => {
+                    suppress_tray_hover(&hover_state, TRAY_MENU_SUPPRESS_HOVER);
+                    windows::hide_window(tray.app_handle(), "hover");
+                }
                 TrayIconEvent::DoubleClick {
                     button: MouseButton::Left,
                     ..
@@ -132,9 +144,13 @@ pub fn setup_tray(
                         if is_move && state.last_move.elapsed() < HOVER_MOVE_THROTTLE {
                             return;
                         }
+                        if Instant::now() < state.suppress_until {
+                            return;
+                        }
                         if is_move {
                             state.last_move = Instant::now();
                         }
+                        state.last_rect = rect;
 
                         if state.shown {
                             state.generation = state.generation.wrapping_add(1);
@@ -159,6 +175,10 @@ pub fn setup_tray(
                                     return;
                                 };
                                 if state.generation != generation || !state.pending_show {
+                                    return;
+                                }
+                                if !is_cursor_inside_tray_rect(&app, state.last_rect) {
+                                    state.pending_show = false;
                                     return;
                                 }
                                 state.pending_show = false;
@@ -199,6 +219,59 @@ fn cancel_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {
     state.generation = state.generation.wrapping_add(1);
     state.pending_show = false;
     state.shown = false;
+}
+
+fn suppress_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>, duration: Duration) {
+    let Ok(mut state) = hover_state.lock() else {
+        return;
+    };
+    state.generation = state.generation.wrapping_add(1);
+    state.pending_show = false;
+    state.shown = false;
+    state.suppress_until = Instant::now() + duration;
+}
+
+fn is_cursor_inside_tray_rect(app: &tauri::AppHandle, rect: Rect) -> bool {
+    let Some(cursor) = cursor_position() else {
+        return true;
+    };
+    let scale_factor = app
+        .get_webview_window("hover")
+        .and_then(|window| window.scale_factor().ok())
+        .unwrap_or(1.0);
+    let rect_size = rect.size.to_physical::<i32>(scale_factor);
+    if rect_size.width <= 0 || rect_size.height <= 0 {
+        return true;
+    }
+    let rect_position = rect.position.to_physical::<i32>(scale_factor);
+    point_inside_rect(
+        cursor.x,
+        cursor.y,
+        rect_position.x,
+        rect_position.y,
+        rect_size.width,
+        rect_size.height,
+    )
+}
+
+fn point_inside_rect(x: i32, y: i32, rect_x: i32, rect_y: i32, width: i32, height: i32) -> bool {
+    x >= rect_x && x < rect_x + width && y >= rect_y && y < rect_y + height
+}
+
+#[cfg(windows)]
+fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
+    let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    let ok = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) };
+    if ok == 0 {
+        None
+    } else {
+        Some(tauri::PhysicalPosition::new(point.x, point.y))
+    }
+}
+
+#[cfg(not(windows))]
+fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
+    None
 }
 
 pub async fn apply_orb_visibility(app: &tauri::AppHandle) {
@@ -451,4 +524,16 @@ fn draw_orb_icon(percent: f64, liquid: (u8, u8, u8)) -> Image<'static> {
 fn blend(base: (u8, u8, u8), top: (u8, u8, u8), amount: f64) -> (u8, u8, u8) {
     let mix = |a: u8, b: u8| (a as f64 + (b as f64 - a as f64) * amount) as u8;
     (mix(base.0, top.0), mix(base.1, top.1), mix(base.2, top.2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn point_inside_rect_requires_cursor_within_bounds() {
+        assert!(point_inside_rect(110, 210, 100, 200, 24, 24));
+        assert!(!point_inside_rect(99, 210, 100, 200, 24, 24));
+        assert!(!point_inside_rect(110, 224, 100, 200, 24, 24));
+    }
 }
