@@ -65,6 +65,7 @@ pub async fn window_toggle_main_maximize(app: AppHandle) -> Result<(), String> {
         } else {
             window.maximize().map_err(|error| error.to_string())?;
         }
+        windows::save_main_window_state_delayed(&app, &window);
     }
     Ok(())
 }

@@ -5,6 +5,11 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 
 use crate::{app_state::AppState, events, storage::repository};
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SetForegroundWindow, ShowWindow, SW_RESTORE,
+};
+
 pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
 const MAIN_WINDOW_DEFAULT_WIDTH: u32 = 1080;
 const MAIN_WINDOW_DEFAULT_HEIGHT: u32 = 720;
@@ -12,6 +17,7 @@ const MAIN_WINDOW_MIN_WIDTH: u32 = 900;
 const MAIN_WINDOW_MIN_HEIGHT: u32 = 620;
 const DEFAULT_HOVER_WIDTH: i32 = 520;
 const DEFAULT_HOVER_HEIGHT: i32 = 470;
+const WINDOW_STATE_SAVE_DELAY_MS: u64 = 180;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,11 +49,7 @@ pub fn show_window(app: &AppHandle, label: &str) {
                 }
             }
         }
-        if label == "main" {
-            restore_main_window_state(app, &window);
-        }
-        let _ = window.show();
-        let _ = window.set_focus();
+        reveal_webview_window(&window, label == "main");
     }
 }
 
@@ -65,13 +67,23 @@ pub fn save_main_window_state(app: &AppHandle, window: &WebviewWindow) {
     let Ok(value) = serde_json::to_string(&saved) else {
         return;
     };
+    let state = app.state::<Arc<AppState>>();
+    if let Ok(mut cached) = state.main_window_state.write() {
+        *cached = Some(saved);
+    }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<Arc<AppState>>();
-        if let Ok(mut cached) = state.main_window_state.write() {
-            *cached = Some(saved);
-        }
         let _ = repository::set_setting(&state.db, MAIN_WINDOW_STATE_KEY, &value).await;
+    });
+}
+
+pub fn save_main_window_state_delayed(app: &AppHandle, window: &WebviewWindow) {
+    let app = app.clone();
+    let window = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(WINDOW_STATE_SAVE_DELAY_MS)).await;
+        save_main_window_state(&app, &window);
     });
 }
 
@@ -102,7 +114,7 @@ fn normalize_main_window_state(mut state: MainWindowState) -> MainWindowState {
     state
 }
 
-fn restore_main_window_state(app: &AppHandle, window: &WebviewWindow) {
+pub fn apply_cached_main_window_state(app: &AppHandle, window: &WebviewWindow) {
     let state = app.state::<Arc<AppState>>();
     let saved = state
         .main_window_state
@@ -139,8 +151,7 @@ pub fn reset_main_window(app: &AppHandle) {
         MAIN_WINDOW_DEFAULT_HEIGHT,
     ));
     let _ = window.center();
-    let _ = window.show();
-    let _ = window.set_focus();
+    reveal_webview_window(&window, true);
     save_main_window_state(app, &window);
 }
 
@@ -185,10 +196,36 @@ fn show_hover_window_near(
         .or_else(|| window.current_monitor().ok().flatten());
     let position = hover_position_near(anchor, anchor_width, hover_width, hover_height, 8, monitor);
     let _ = window.set_position(position);
-    let _ = window.show();
-    let _ = window.set_focus();
+    reveal_webview_window(window, false);
     let _ = window.emit("hover://orb-enter", ());
 }
+
+fn reveal_webview_window(window: &WebviewWindow, activate_virtual_desktop: bool) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    if activate_virtual_desktop {
+        activate_for_virtual_desktop(window);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn activate_for_virtual_desktop(window: &WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        let raw_hwnd = hwnd.0 as _;
+        unsafe {
+            if window.is_minimized().unwrap_or(false) {
+                ShowWindow(raw_hwnd, SW_RESTORE);
+            }
+            SetForegroundWindow(raw_hwnd);
+        }
+    }
+
+    let _ = window.set_focus();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn activate_for_virtual_desktop(_window: &WebviewWindow) {}
 
 fn hover_position_near(
     anchor: PhysicalPosition<i32>,

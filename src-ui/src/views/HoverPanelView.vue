@@ -351,7 +351,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="hover-panel" :class="{ visible }" @mouseenter="showDelayed" @mouseleave="hideDelayed">
+  <main class="hover-panel-window" :class="{ visible }" @mouseenter="showDelayed" @mouseleave="hideDelayed">
+    <section class="hover-panel">
     <header class="hover-panel-hero" :class="totalBalanceClass">
       <div class="hero-copy">
         <span>额度</span>
@@ -414,5 +415,6 @@ onUnmounted(() => {
       <span :class="{ stale: store.summary.stale }">{{ store.summary.stale ? '缓存数据' : '最新数据' }}</span>
       <span>额度更新 {{ reset(store.summary.lastSyncedAt) }}</span>
     </footer>
+    </section>
   </main>
 </template>

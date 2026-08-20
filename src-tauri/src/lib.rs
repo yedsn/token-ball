@@ -78,11 +78,28 @@ pub fn run() {
             });
 
             if let Some(main_window) = app.get_webview_window("main") {
+                crate::windows::apply_cached_main_window_state(app.handle(), &main_window);
                 let app_handle = app.handle().clone();
+                let main_window_for_events = main_window.clone();
                 main_window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        crate::windows::handle_main_close(&app_handle);
+                    match event {
+                        WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            crate::windows::handle_main_close(&app_handle);
+                        }
+                        WindowEvent::Resized(_) | WindowEvent::Moved(_) => {
+                            crate::windows::save_main_window_state_delayed(
+                                &app_handle,
+                                &main_window_for_events,
+                            );
+                        }
+                        WindowEvent::Focused(false) => {
+                            crate::windows::save_main_window_state_delayed(
+                                &app_handle,
+                                &main_window_for_events,
+                            );
+                        }
+                        _ => {}
                     }
                 });
             }

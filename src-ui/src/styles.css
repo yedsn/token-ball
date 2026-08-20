@@ -28,6 +28,11 @@ body[data-view="main"] {
   background: #111816;
 }
 
+body[data-view="hover"],
+body[data-view="hover"] #app {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -163,6 +168,14 @@ body,
   color: #e8f0ee;
   background: rgba(0,0,0,0.26);
   cursor: pointer;
+}
+
+.hover-panel-window {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
 }
 
 .hover-panel {
