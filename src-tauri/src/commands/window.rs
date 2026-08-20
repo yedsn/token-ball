@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use url::Url;
 
-use crate::{app_state::AppState, storage::repository, windows};
+use crate::{app_state::AppState, storage::repository, tray, windows};
 
 #[tauri::command]
 pub async fn window_show(
@@ -33,6 +33,12 @@ pub async fn window_hide(
             .map_err::<String, _>(Into::into)?;
     }
     windows::hide_window(&app, &label);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn window_hide_hover_after_keyboard_close(app: AppHandle) -> Result<(), String> {
+    tray::hide_hover_after_keyboard_close(&app);
     Ok(())
 }
 

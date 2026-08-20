@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -23,7 +23,10 @@ use crate::{
 const TRAY_ID: &str = "token-ball";
 const HOVER_MOVE_THROTTLE: Duration = Duration::from_millis(120);
 const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300);
+const KEYBOARD_CLOSE_SUPPRESS_HOVER: Duration = Duration::from_millis(300);
 const TRAY_MENU_SUPPRESS_HOVER: Duration = Duration::from_millis(1200);
+
+static TRAY_HOVER_STATE: OnceLock<Arc<Mutex<TrayHoverState>>> = OnceLock::new();
 
 #[derive(Debug)]
 struct TrayHoverState {
@@ -48,6 +51,7 @@ pub fn setup_tray(
         last_rect: Rect::default(),
         suppress_until: Instant::now(),
     }));
+    let _ = TRAY_HOVER_STATE.set(Arc::clone(&hover_state));
     let show_orb = MenuItem::with_id(app, "show_orb", "显示额度", true, None::<&str>)?;
     let hide_orb = MenuItem::with_id(app, "hide_orb", "隐藏额度", true, None::<&str>)?;
     let open_main = MenuItem::with_id(app, "open_main", "打开管理", true, None::<&str>)?;
@@ -201,6 +205,13 @@ pub fn setup_tray(
         })
         .build(app)?;
     Ok(())
+}
+
+pub fn hide_hover_after_keyboard_close(app: &tauri::AppHandle) {
+    if let Some(hover_state) = TRAY_HOVER_STATE.get() {
+        suppress_tray_hover(hover_state, KEYBOARD_CLOSE_SUPPRESS_HOVER);
+    }
+    windows::hide_window(app, "hover");
 }
 
 fn cancel_pending_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {

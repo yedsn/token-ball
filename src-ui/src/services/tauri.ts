@@ -86,6 +86,10 @@ export function hideWindow(label: string): Promise<void> {
   return invoke("window_hide", { label });
 }
 
+export function hideHoverAfterKeyboardClose(): Promise<void> {
+  return invoke("window_hide_hover_after_keyboard_close");
+}
+
 export function openMainOverview(): Promise<void> {
   return invoke("window_open_main_overview");
 }

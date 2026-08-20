@@ -130,6 +130,7 @@ pub fn run() {
             commands::updater_restart,
             commands::window_show,
             commands::window_hide,
+            commands::window_hide_hover_after_keyboard_close,
             commands::window_open_main_overview,
             commands::window_minimize_main,
             commands::window_toggle_main_maximize,

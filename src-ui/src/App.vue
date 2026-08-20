@@ -4,7 +4,7 @@ import OrbView from "./views/OrbView.vue";
 import HoverPanelView from "./views/HoverPanelView.vue";
 import ManagementView from "./views/ManagementView.vue";
 import { useTokenBallStore } from "./store";
-import { closeMainWindow, hideWindow } from "./services/tauri";
+import { closeMainWindow, hideHoverAfterKeyboardClose } from "./services/tauri";
 
 const store = useTokenBallStore();
 const params = new URLSearchParams(window.location.search);
@@ -15,7 +15,7 @@ function handleEscapeKey(event: KeyboardEvent) {
 
   if (view.value === "hover") {
     event.preventDefault();
-    void hideWindow("hover");
+    void hideHoverAfterKeyboardClose();
     return;
   }
 
