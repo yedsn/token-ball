@@ -4,6 +4,7 @@ dist
 target
 src-tauri/target
 .vite
+.diagnostics
 docs/.vitepress/dist
 .DS_Store
 .idea/
@@ -12,3 +13,4 @@ docs/.vitepress/dist
 *.sqlite
 *.sqlite3
 scripts/release/.secrets/
+src-tauri/gen/schemas/*
