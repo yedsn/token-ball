@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     app_state::AppState,
+    debug_log,
     commands,
     quota::{ConnectionStatus, DisplaySettings, QuotaSummary},
     storage::repository,
@@ -43,6 +44,7 @@ pub fn setup_tray(
     initial_summary: &QuotaSummary,
     initial_settings: &DisplaySettings,
 ) -> tauri::Result<()> {
+    debug_log::line("setup_tray");
     let hover_state = Arc::new(Mutex::new(TrayHoverState {
         generation: 0,
         pending_show: false,
@@ -78,15 +80,29 @@ pub fn setup_tray(
         .tooltip(tray_tooltip(initial_summary, initial_settings))
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "show_orb" => set_orb_visible(app, true),
+            "show_orb" => {
+                debug_log::line("tray menu: show_orb");
+                set_orb_visible(app, true)
+            }
             "hide_orb" => {
+                debug_log::line("tray menu: hide_orb");
                 windows::hide_window(app, "hover");
                 set_orb_visible(app, false);
             }
-            "open_main" => windows::open_main_overview(app),
-            "reset_main" => windows::reset_main_window(app),
-            "check_update" => windows::open_main_update(app),
+            "open_main" => {
+                debug_log::line("tray menu: open_main");
+                windows::open_main_overview(app)
+            }
+            "reset_main" => {
+                debug_log::line("tray menu: reset_main");
+                windows::reset_main_window(app)
+            }
+            "check_update" => {
+                debug_log::line("tray menu: check_update");
+                windows::open_main_update(app)
+            }
             "refresh" => {
+                debug_log::line("tray menu: refresh");
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app_handle.state::<Arc<AppState>>();
@@ -94,6 +110,7 @@ pub fn setup_tray(
                 });
             }
             "quit" => {
+                debug_log::line("tray menu: quit");
                 let value = app
                     .get_webview_window("main")
                     .and_then(|window| windows::main_window_state_json(&window));
@@ -117,6 +134,7 @@ pub fn setup_tray(
                     button_state: MouseButtonState::Up,
                     ..
                 } => {
+                    debug_log::line("tray icon: left click up");
                     cancel_tray_hover(&hover_state);
                     windows::hide_window(tray.app_handle(), "hover");
                     windows::open_main_overview(tray.app_handle());
@@ -125,6 +143,7 @@ pub fn setup_tray(
                     button: MouseButton::Right,
                     ..
                 } => {
+                    debug_log::line("tray icon: right click");
                     suppress_tray_hover(&hover_state, TRAY_MENU_SUPPRESS_HOVER);
                     windows::hide_window(tray.app_handle(), "hover");
                 }
@@ -132,6 +151,7 @@ pub fn setup_tray(
                     button: MouseButton::Left,
                     ..
                 } => {
+                    debug_log::line("tray icon: left double click");
                     cancel_tray_hover(&hover_state);
                     windows::hide_window(tray.app_handle(), "hover");
                     windows::open_main_overview(tray.app_handle());
@@ -169,6 +189,7 @@ pub fn setup_tray(
 
                     let app = tray.app_handle().clone();
                     if should_update_visible {
+                        debug_log::line("tray icon: update hover position");
                         windows::show_hover_near_tray(&app, rect, position);
                     } else if should_schedule {
                         let hover_state = Arc::clone(&hover_state);
@@ -188,12 +209,14 @@ pub fn setup_tray(
                                 state.pending_show = false;
                                 state.shown = true;
                             }
+                            debug_log::line("tray icon: show hover after delay");
                             windows::show_hover_near_tray(&app, rect, position);
                             update_tray_from_storage(&app).await;
                         });
                     }
                 }
                 TrayIconEvent::Leave { .. } => {
+                    debug_log::line("tray icon: leave");
                     cancel_pending_tray_hover(&hover_state);
 
                     if let Some(window) = tray.app_handle().get_webview_window("hover") {
@@ -208,6 +231,7 @@ pub fn setup_tray(
 }
 
 pub fn hide_hover_after_keyboard_close(app: &tauri::AppHandle) {
+    debug_log::line("hide_hover_after_keyboard_close");
     if let Some(hover_state) = TRAY_HOVER_STATE.get() {
         suppress_tray_hover(hover_state, KEYBOARD_CLOSE_SUPPRESS_HOVER);
     }
@@ -299,6 +323,7 @@ pub async fn apply_orb_visibility(app: &tauri::AppHandle) {
 }
 
 fn set_orb_visible(app: &tauri::AppHandle, visible: bool) {
+    debug_log::line(format!("set_orb_visible: {visible}"));
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app_handle.state::<Arc<AppState>>();

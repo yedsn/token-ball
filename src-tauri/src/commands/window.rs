@@ -1,10 +1,16 @@
 use std::process::Command;
 use std::sync::Arc;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use tauri::{AppHandle, Manager, State};
 use url::Url;
 
 use crate::{app_state::AppState, storage::repository, tray, windows};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[tauri::command]
 pub async fn window_show(
@@ -98,7 +104,9 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
 fn open_system_browser(url: &str) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("rundll32")
+        let mut command = Command::new("rundll32");
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
             .args(["url.dll,FileProtocolHandler", url])
             .spawn()?;
     }

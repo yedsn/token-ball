@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 
-use crate::{app_state::AppState, events, storage::repository};
+use crate::{app_state::AppState, debug_log, events, storage::repository};
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -31,6 +31,7 @@ pub struct MainWindowState {
 }
 
 pub fn show_window(app: &AppHandle, label: &str) {
+    debug_log::line(format!("show_window: {label}"));
     if let Some(window) = app.get_webview_window(label) {
         if label == "hover" {
             if let Some(orb) = app.get_webview_window("orb") {
@@ -54,6 +55,7 @@ pub fn show_window(app: &AppHandle, label: &str) {
 }
 
 pub fn handle_main_close(app: &AppHandle) {
+    debug_log::line("handle_main_close");
     if let Some(window) = app.get_webview_window("main") {
         save_main_window_state(app, &window);
         let _ = window.hide();
@@ -156,6 +158,7 @@ pub fn reset_main_window(app: &AppHandle) {
 }
 
 pub fn show_hover_near_tray(app: &AppHandle, rect: Rect, fallback: PhysicalPosition<f64>) {
+    debug_log::line("show_hover_near_tray");
     let Some(window) = app.get_webview_window("hover") else {
         return;
     };
@@ -196,15 +199,16 @@ fn show_hover_window_near(
         .or_else(|| window.current_monitor().ok().flatten());
     let position = hover_position_near(anchor, anchor_width, hover_width, hover_height, 8, monitor);
     let _ = window.set_position(position);
-    reveal_webview_window(window, false);
+    let _ = window.unminimize();
+    let _ = window.show();
     let _ = window.emit("hover://orb-enter", ());
 }
 
 fn reveal_webview_window(window: &WebviewWindow, activate_virtual_desktop: bool) {
     let _ = window.unminimize();
     let _ = window.show();
-    let _ = window.set_focus();
     if activate_virtual_desktop {
+        let _ = window.set_focus();
         activate_for_virtual_desktop(window);
     }
 }
@@ -268,12 +272,14 @@ fn hover_position_near(
 }
 
 pub fn hide_window(app: &AppHandle, label: &str) {
+    debug_log::line(format!("hide_window: {label}"));
     if let Some(window) = app.get_webview_window(label) {
         let _ = window.hide();
     }
 }
 
 pub fn open_main_overview(app: &AppHandle) {
+    debug_log::line("open_main_overview");
     hide_window(app, "hover");
     show_window(app, "main");
     events::emit_show_overview(app);
@@ -286,6 +292,7 @@ pub fn open_main_overview(app: &AppHandle) {
 
 /// 打开主窗口并跳转到「关于/检查更新」面板，供托盘菜单调用。
 pub fn open_main_update(app: &AppHandle) {
+    debug_log::line("open_main_update");
     hide_window(app, "hover");
     show_window(app, "main");
     events::emit_show_update(app);

@@ -1,6 +1,7 @@
 mod app_icon_rgba;
 mod app_state;
 mod commands;
+mod debug_log;
 mod error;
 mod events;
 mod providers;
@@ -16,6 +17,9 @@ use app_state::AppState;
 use tauri::{Manager, WindowEvent};
 
 pub fn run() {
+    debug_log::init();
+    debug_log::line("app run start");
+
     tracing_subscriber::fmt()
         .with_env_filter("token_ball=info,warn")
         .without_time()
@@ -56,9 +60,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            crate::debug_log::line("single instance: show main");
             crate::windows::show_window(app, "main");
         }))
         .setup(move |app| {
+            crate::debug_log::line("setup start");
             tray::setup_tray(app, &initial_summary, &initial_settings)?;
             let _ = commands::app_icon_set_style(
                 app.handle().clone(),
@@ -103,6 +109,7 @@ pub fn run() {
                     }
                 });
             }
+            crate::debug_log::line("setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
