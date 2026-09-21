@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
 
-use crate::{app_state::AppState, debug_log, events, storage::repository};
+use crate::{app_state::AppState, debug_log, events, storage::repository, tray};
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -272,9 +272,15 @@ fn hover_position_near(
 }
 
 pub fn hide_window(app: &AppHandle, label: &str) {
-    debug_log::line(format!("hide_window: {label}"));
+    if label == "hover" {
+        tray::mark_hover_hidden();
+    }
+    debug_log::line(format!("hide_window: {label}: begin"));
     if let Some(window) = app.get_webview_window(label) {
-        let _ = window.hide();
+        let result = window.hide();
+        debug_log::line(format!("hide_window: {label}: end result={result:?}"));
+    } else {
+        debug_log::line(format!("hide_window: {label}: window not found"));
     }
 }
 

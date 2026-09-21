@@ -160,7 +160,6 @@ pub fn setup_tray(
                 | TrayIconEvent::Move { position, rect, .. } => {
                     let is_move = matches!(event, TrayIconEvent::Move { .. });
                     let mut should_schedule = false;
-                    let mut should_update_visible = false;
                     let generation = {
                         let Ok(mut state) = hover_state.lock() else {
                             return;
@@ -176,10 +175,7 @@ pub fn setup_tray(
                         }
                         state.last_rect = rect;
 
-                        if state.shown {
-                            state.generation = state.generation.wrapping_add(1);
-                            should_update_visible = true;
-                        } else if !state.pending_show {
+                        if !state.shown && !state.pending_show {
                             state.generation = state.generation.wrapping_add(1);
                             state.pending_show = true;
                             should_schedule = true;
@@ -188,10 +184,7 @@ pub fn setup_tray(
                     };
 
                     let app = tray.app_handle().clone();
-                    if should_update_visible {
-                        debug_log::line("tray icon: update hover position");
-                        windows::show_hover_near_tray(&app, rect, position);
-                    } else if should_schedule {
+                    if should_schedule {
                         let hover_state = Arc::clone(&hover_state);
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(HOVER_SHOW_DELAY).await;
@@ -236,6 +229,12 @@ pub fn hide_hover_after_keyboard_close(app: &tauri::AppHandle) {
         suppress_tray_hover(hover_state, KEYBOARD_CLOSE_SUPPRESS_HOVER);
     }
     windows::hide_window(app, "hover");
+}
+
+pub fn mark_hover_hidden() {
+    if let Some(hover_state) = TRAY_HOVER_STATE.get() {
+        cancel_pending_tray_hover(hover_state);
+    }
 }
 
 fn cancel_pending_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {
