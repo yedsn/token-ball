@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Rect, WebviewWindow};
 
 use crate::{app_state::AppState, debug_log, events, storage::repository, tray};
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    SetForegroundWindow, ShowWindow, SW_RESTORE,
-};
+use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow, SW_RESTORE};
 
 pub const MAIN_WINDOW_STATE_KEY: &str = "window.main.state";
 const MAIN_WINDOW_DEFAULT_WIDTH: u32 = 1080;
@@ -18,6 +16,24 @@ const MAIN_WINDOW_MIN_HEIGHT: u32 = 620;
 const DEFAULT_HOVER_WIDTH: i32 = 520;
 const DEFAULT_HOVER_HEIGHT: i32 = 470;
 const WINDOW_STATE_SAVE_DELAY_MS: u64 = 180;
+const HOVER_TRAY_GAP: i32 = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PhysicalBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl PhysicalBounds {
+    pub fn contains(self, point: PhysicalPosition<i32>) -> bool {
+        point.x >= self.x
+            && point.x < self.x + self.width
+            && point.y >= self.y
+            && point.y < self.y + self.height
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,11 +54,15 @@ pub fn show_window(app: &AppHandle, label: &str) {
                 if let (Ok(orb_position), Ok(orb_size), Ok(hover_size)) =
                     (orb.outer_position(), orb.outer_size(), window.outer_size())
                 {
+                    let anchor = PhysicalBounds {
+                        x: orb_position.x,
+                        y: orb_position.y,
+                        width: orb_size.width as i32,
+                        height: orb_size.height as i32,
+                    };
                     let position = hover_position_near(
-                        orb_position,
-                        orb_size.width as i32,
-                        hover_size.width as i32,
-                        hover_size.height as i32,
+                        anchor,
+                        hover_size,
                         12,
                         orb.current_monitor().ok().flatten(),
                     );
@@ -157,51 +177,131 @@ pub fn reset_main_window(app: &AppHandle) {
     save_main_window_state(app, &window);
 }
 
-pub fn show_hover_near_tray(app: &AppHandle, rect: Rect, fallback: PhysicalPosition<f64>) {
-    debug_log::line("show_hover_near_tray");
-    let Some(window) = app.get_webview_window("hover") else {
-        return;
-    };
-    let scale_factor = window.scale_factor().unwrap_or(1.0);
-    let (anchor, anchor_width) = tray_hover_anchor(rect, fallback, scale_factor);
-    show_hover_window_near(&window, anchor, anchor_width);
-}
-
-fn tray_hover_anchor(
+pub fn show_hover_near_tray(
+    app: &AppHandle,
     rect: Rect,
     fallback: PhysicalPosition<f64>,
-    scale_factor: f64,
-) -> (PhysicalPosition<i32>, i32) {
-    let rect_size = rect.size.to_physical::<i32>(scale_factor);
-    if rect_size.width > 0 && rect_size.height > 0 {
-        (
-            rect.position.to_physical::<i32>(scale_factor),
-            rect_size.width,
-        )
-    } else {
-        (fallback.cast::<i32>(), 0)
-    }
-}
-
-fn show_hover_window_near(
-    window: &WebviewWindow,
-    anchor: PhysicalPosition<i32>,
-    anchor_width: i32,
-) {
-    let (hover_width, hover_height) = window
-        .outer_size()
-        .map(|size| (size.width as i32, size.height as i32))
-        .unwrap_or((DEFAULT_HOVER_WIDTH, DEFAULT_HOVER_HEIGHT));
+) -> Option<(PhysicalBounds, PhysicalBounds)> {
+    debug_log::line("show_hover_near_tray");
+    let Some(window) = app.get_webview_window("hover") else {
+        return None;
+    };
     let monitor = window
-        .monitor_from_point(anchor.x as f64, anchor.y as f64)
+        .monitor_from_point(fallback.x, fallback.y)
         .ok()
         .flatten()
         .or_else(|| window.current_monitor().ok().flatten());
-    let position = hover_position_near(anchor, anchor_width, hover_width, hover_height, 8, monitor);
-    let _ = window.set_position(position);
-    let _ = window.unminimize();
-    let _ = window.show();
+    let target_scale_factor = monitor
+        .as_ref()
+        .map(|monitor| monitor.scale_factor())
+        .unwrap_or_else(|| window.scale_factor().unwrap_or(1.0));
+    let tray_bounds = tray_hover_bounds(rect, fallback, target_scale_factor);
+    let hover_size = hover_physical_size(&window, target_scale_factor);
+    let position = hover_position_near(tray_bounds, hover_size, HOVER_TRAY_GAP, monitor);
+
+    debug_log::line(format!("hover set_position: begin {position:?}"));
+    let position_result = window.set_position(position);
+    debug_log::line(format!(
+        "hover set_position: end result={position_result:?}"
+    ));
+    if position_result.is_err() {
+        return None;
+    }
+
+    debug_log::line("hover unminimize: begin");
+    let unminimize_result = window.unminimize();
+    debug_log::line(format!(
+        "hover unminimize: end result={unminimize_result:?}"
+    ));
+    debug_log::line("hover show: begin");
+    let show_result = window.show();
+    debug_log::line(format!("hover show: end result={show_result:?}"));
+    if show_result.is_err() {
+        return None;
+    }
+
+    let hover_bounds = window_bounds(&window).unwrap_or(PhysicalBounds {
+        x: position.x,
+        y: position.y,
+        width: hover_size.width as i32,
+        height: hover_size.height as i32,
+    });
     let _ = window.emit("hover://orb-enter", ());
+    Some((tray_bounds, hover_bounds))
+}
+
+pub fn tray_bounds_for_event(
+    app: &AppHandle,
+    rect: Rect,
+    fallback: PhysicalPosition<f64>,
+) -> PhysicalBounds {
+    let scale_factor = app
+        .get_webview_window("hover")
+        .and_then(|window| {
+            window
+                .monitor_from_point(fallback.x, fallback.y)
+                .ok()
+                .flatten()
+                .map(|monitor| monitor.scale_factor())
+                .or_else(|| window.scale_factor().ok())
+        })
+        .unwrap_or(1.0);
+    tray_hover_bounds(rect, fallback, scale_factor)
+}
+
+fn tray_hover_bounds(
+    rect: Rect,
+    fallback: PhysicalPosition<f64>,
+    scale_factor: f64,
+) -> PhysicalBounds {
+    let rect_size = rect.size.to_physical::<i32>(scale_factor);
+    if rect_size.width > 0 && rect_size.height > 0 {
+        let position = rect.position.to_physical::<i32>(scale_factor);
+        PhysicalBounds {
+            x: position.x,
+            y: position.y,
+            width: rect_size.width,
+            height: rect_size.height,
+        }
+    } else {
+        let fallback = fallback.cast::<i32>();
+        PhysicalBounds {
+            x: fallback.x,
+            y: fallback.y,
+            width: 1,
+            height: 1,
+        }
+    }
+}
+
+fn hover_physical_size(window: &WebviewWindow, target_scale_factor: f64) -> PhysicalSize<u32> {
+    let current_scale_factor = window.scale_factor().unwrap_or(target_scale_factor);
+    window
+        .outer_size()
+        .map(|size| {
+            let logical = size.to_logical::<f64>(current_scale_factor);
+            PhysicalSize::new(
+                (logical.width * target_scale_factor).round().max(1.0) as u32,
+                (logical.height * target_scale_factor).round().max(1.0) as u32,
+            )
+        })
+        .unwrap_or_else(|_| {
+            PhysicalSize::new(
+                (DEFAULT_HOVER_WIDTH as f64 * target_scale_factor).round() as u32,
+                (DEFAULT_HOVER_HEIGHT as f64 * target_scale_factor).round() as u32,
+            )
+        })
+}
+
+fn window_bounds(window: &WebviewWindow) -> Option<PhysicalBounds> {
+    let position = window.outer_position().ok()?;
+    let size = window.outer_size().ok()?;
+    Some(PhysicalBounds {
+        x: position.x,
+        y: position.y,
+        width: size.width as i32,
+        height: size.height as i32,
+    })
 }
 
 fn reveal_webview_window(window: &WebviewWindow, activate_virtual_desktop: bool) {
@@ -232,43 +332,59 @@ fn activate_for_virtual_desktop(window: &WebviewWindow) {
 fn activate_for_virtual_desktop(_window: &WebviewWindow) {}
 
 fn hover_position_near(
-    anchor: PhysicalPosition<i32>,
-    anchor_width: i32,
-    hover_width: i32,
-    hover_height: i32,
+    anchor: PhysicalBounds,
+    hover_size: PhysicalSize<u32>,
     gap: i32,
     monitor: Option<tauri::Monitor>,
 ) -> PhysicalPosition<i32> {
-    let right_x = anchor.x + anchor_width + gap;
-    let left_x = anchor.x - hover_width - gap;
-    let mut x = right_x;
-    let mut y = anchor.y;
+    let hover_width = hover_size.width as i32;
+    let hover_height = hover_size.height as i32;
+    let center_x = anchor.x + anchor.width / 2;
+    let center_y = anchor.y + anchor.height / 2;
+    let candidates = [
+        PhysicalPosition::new(center_x - hover_width / 2, anchor.y - hover_height - gap),
+        PhysicalPosition::new(center_x - hover_width / 2, anchor.y + anchor.height + gap),
+        PhysicalPosition::new(anchor.x - hover_width - gap, center_y - hover_height / 2),
+        PhysicalPosition::new(anchor.x + anchor.width + gap, center_y - hover_height / 2),
+    ];
 
-    if let Some(monitor) = monitor {
-        let area = monitor.work_area();
-        let area_x = area.position.x;
-        let area_y = area.position.y;
-        let area_right = area_x + area.size.width as i32;
-        let area_bottom = area_y + area.size.height as i32;
+    let Some(monitor) = monitor else {
+        return candidates[0];
+    };
+    let area = monitor.work_area();
+    let area_left = area.position.x;
+    let area_top = area.position.y;
+    let area_right = area_left + area.size.width as i32;
+    let area_bottom = area_top + area.size.height as i32;
 
-        if right_x + hover_width > area_right && left_x >= area_x {
-            x = left_x;
-        }
-        if x < area_x {
-            x = area_x + gap;
-        }
-        if x + hover_width > area_right {
-            x = area_right - hover_width - gap;
-        }
-        if y + hover_height > area_bottom {
-            y = area_bottom - hover_height - gap;
-        }
-        if y < area_y {
-            y = area_y + gap;
-        }
+    if let Some(position) = candidates.into_iter().find(|position| {
+        position.x >= area_left
+            && position.y >= area_top
+            && position.x + hover_width <= area_right
+            && position.y + hover_height <= area_bottom
+    }) {
+        return position;
     }
 
-    PhysicalPosition::new(x, y)
+    let fallback = candidates[0];
+    PhysicalPosition::new(
+        fallback
+            .x
+            .clamp(area_left, (area_right - hover_width).max(area_left)),
+        fallback
+            .y
+            .clamp(area_top, (area_bottom - hover_height).max(area_top)),
+    )
+}
+
+pub fn hide_hover_window(app: &AppHandle) -> bool {
+    debug_log::line("hide_hover_window: begin");
+    let result = app
+        .get_webview_window("hover")
+        .map(|window| window.hide())
+        .transpose();
+    debug_log::line(format!("hide_hover_window: end result={result:?}"));
+    matches!(result, Ok(Some(())) | Ok(None))
 }
 
 pub fn hide_window(app: &AppHandle, label: &str) {
@@ -322,10 +438,17 @@ mod tests {
         };
         let fallback = PhysicalPosition::new(500.0, 600.0);
 
-        let (anchor, width) = tray_hover_anchor(rect, fallback, 1.5);
+        let bounds = tray_hover_bounds(rect, fallback, 1.5);
 
-        assert_eq!(anchor, PhysicalPosition::new(150, 300));
-        assert_eq!(width, 36);
+        assert_eq!(
+            bounds,
+            PhysicalBounds {
+                x: 150,
+                y: 300,
+                width: 36,
+                height: 36
+            }
+        );
     }
 
     #[test]
@@ -336,10 +459,17 @@ mod tests {
         };
         let fallback = PhysicalPosition::new(500.0, 600.0);
 
-        let (anchor, width) = tray_hover_anchor(rect, fallback, 1.5);
+        let bounds = tray_hover_bounds(rect, fallback, 1.5);
 
-        assert_eq!(anchor, PhysicalPosition::new(500, 600));
-        assert_eq!(width, 0);
+        assert_eq!(
+            bounds,
+            PhysicalBounds {
+                x: 500,
+                y: 600,
+                width: 1,
+                height: 1
+            }
+        );
     }
 
     #[test]

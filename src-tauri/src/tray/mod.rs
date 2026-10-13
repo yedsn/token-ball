@@ -7,15 +7,14 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, Rect,
+    Manager, Rect,
 };
 
 use chrono::{DateTime, Utc};
 
 use crate::{
     app_state::AppState,
-    debug_log,
-    commands,
+    commands, debug_log,
     quota::{ConnectionStatus, DisplaySettings, QuotaSummary},
     storage::repository,
     windows,
@@ -24,6 +23,8 @@ use crate::{
 const TRAY_ID: &str = "token-ball";
 const HOVER_MOVE_THROTTLE: Duration = Duration::from_millis(120);
 const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300);
+const HOVER_OUTSIDE_GRACE: Duration = Duration::from_secs(3);
+const HOVER_MONITOR_INTERVAL: Duration = Duration::from_millis(25);
 const KEYBOARD_CLOSE_SUPPRESS_HOVER: Duration = Duration::from_millis(300);
 const TRAY_MENU_SUPPRESS_HOVER: Duration = Duration::from_millis(1200);
 
@@ -36,6 +37,7 @@ struct TrayHoverState {
     shown: bool,
     last_move: Instant,
     last_rect: Rect,
+    last_position: tauri::PhysicalPosition<f64>,
     suppress_until: Instant,
 }
 
@@ -51,6 +53,7 @@ pub fn setup_tray(
         shown: false,
         last_move: Instant::now() - HOVER_MOVE_THROTTLE,
         last_rect: Rect::default(),
+        last_position: tauri::PhysicalPosition::new(0.0, 0.0),
         suppress_until: Instant::now(),
     }));
     let _ = TRAY_HOVER_STATE.set(Arc::clone(&hover_state));
@@ -82,6 +85,7 @@ pub fn setup_tray(
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show_orb" => {
                 debug_log::line("tray menu: show_orb");
+                windows::hide_window(app, "hover");
                 set_orb_visible(app, true)
             }
             "hide_orb" => {
@@ -103,6 +107,7 @@ pub fn setup_tray(
             }
             "refresh" => {
                 debug_log::line("tray menu: refresh");
+                windows::hide_window(app, "hover");
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app_handle.state::<Arc<AppState>>();
@@ -111,6 +116,7 @@ pub fn setup_tray(
             }
             "quit" => {
                 debug_log::line("tray menu: quit");
+                windows::hide_window(app, "hover");
                 let value = app
                     .get_webview_window("main")
                     .and_then(|window| windows::main_window_state_json(&window));
@@ -141,6 +147,7 @@ pub fn setup_tray(
                 }
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
+                    button_state: MouseButtonState::Down,
                     ..
                 } => {
                     debug_log::line("tray icon: right click");
@@ -174,6 +181,7 @@ pub fn setup_tray(
                             state.last_move = Instant::now();
                         }
                         state.last_rect = rect;
+                        state.last_position = position;
 
                         if !state.shown && !state.pending_show {
                             state.generation = state.generation.wrapping_add(1);
@@ -188,22 +196,52 @@ pub fn setup_tray(
                         let hover_state = Arc::clone(&hover_state);
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(HOVER_SHOW_DELAY).await;
-                            {
+                            let (latest_rect, latest_position) = {
                                 let Ok(mut state) = hover_state.lock() else {
                                     return;
                                 };
                                 if state.generation != generation || !state.pending_show {
                                     return;
                                 }
-                                if !is_cursor_inside_tray_rect(&app, state.last_rect) {
+                                let tray_bounds = windows::tray_bounds_for_event(
+                                    &app,
+                                    state.last_rect,
+                                    state.last_position,
+                                );
+                                if cursor_position()
+                                    .is_some_and(|cursor| !tray_bounds.contains(cursor))
+                                {
                                     state.pending_show = false;
                                     return;
                                 }
                                 state.pending_show = false;
+                                (state.last_rect, state.last_position)
+                            };
+                            debug_log::line("tray icon: show hover after delay");
+                            let Some((tray_bounds, hover_bounds)) =
+                                windows::show_hover_near_tray(&app, latest_rect, latest_position)
+                            else {
+                                return;
+                            };
+                            {
+                                let Ok(mut state) = hover_state.lock() else {
+                                    windows::hide_hover_window(&app);
+                                    return;
+                                };
+                                if state.generation != generation {
+                                    drop(state);
+                                    windows::hide_hover_window(&app);
+                                    return;
+                                }
                                 state.shown = true;
                             }
-                            debug_log::line("tray icon: show hover after delay");
-                            windows::show_hover_near_tray(&app, rect, position);
+                            monitor_visible_hover(
+                                app.clone(),
+                                Arc::clone(&hover_state),
+                                generation,
+                                tray_bounds,
+                                hover_bounds,
+                            );
                             update_tray_from_storage(&app).await;
                         });
                     }
@@ -211,10 +249,6 @@ pub fn setup_tray(
                 TrayIconEvent::Leave { .. } => {
                     debug_log::line("tray icon: leave");
                     cancel_pending_tray_hover(&hover_state);
-
-                    if let Some(window) = tray.app_handle().get_webview_window("hover") {
-                        let _ = window.emit("hover://orb-leave", ());
-                    }
                 }
                 _ => {}
             }
@@ -233,7 +267,7 @@ pub fn hide_hover_after_keyboard_close(app: &tauri::AppHandle) {
 
 pub fn mark_hover_hidden() {
     if let Some(hover_state) = TRAY_HOVER_STATE.get() {
-        cancel_pending_tray_hover(hover_state);
+        cancel_tray_hover(hover_state);
     }
 }
 
@@ -241,9 +275,10 @@ fn cancel_pending_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {
     let Ok(mut state) = hover_state.lock() else {
         return;
     };
-    state.generation = state.generation.wrapping_add(1);
-    state.pending_show = false;
-    state.shown = false;
+    if state.pending_show {
+        state.generation = state.generation.wrapping_add(1);
+        state.pending_show = false;
+    }
 }
 
 fn cancel_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {
@@ -265,31 +300,91 @@ fn suppress_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>, duration: Durat
     state.suppress_until = Instant::now() + duration;
 }
 
-fn is_cursor_inside_tray_rect(app: &tauri::AppHandle, rect: Rect) -> bool {
-    let Some(cursor) = cursor_position() else {
-        return true;
-    };
-    let scale_factor = app
-        .get_webview_window("hover")
-        .and_then(|window| window.scale_factor().ok())
-        .unwrap_or(1.0);
-    let rect_size = rect.size.to_physical::<i32>(scale_factor);
-    if rect_size.width <= 0 || rect_size.height <= 0 {
-        return true;
-    }
-    let rect_position = rect.position.to_physical::<i32>(scale_factor);
-    point_inside_rect(
-        cursor.x,
-        cursor.y,
-        rect_position.x,
-        rect_position.y,
-        rect_size.width,
-        rect_size.height,
-    )
+fn monitor_visible_hover(
+    app: tauri::AppHandle,
+    hover_state: Arc<Mutex<TrayHoverState>>,
+    generation: u64,
+    tray_bounds: windows::PhysicalBounds,
+    hover_bounds: windows::PhysicalBounds,
+) {
+    tauri::async_runtime::spawn(async move {
+        let mut active_generation = generation;
+        let mut outside_since = None;
+        let mut previous_buttons = mouse_buttons_pressed();
+
+        loop {
+            let active = hover_state
+                .lock()
+                .map(|state| state.shown && state.generation == active_generation)
+                .unwrap_or(false);
+            if !active {
+                return;
+            }
+
+            let cursor = cursor_position();
+            let inside_interactive_region = cursor
+                .map(|position| tray_bounds.contains(position) || hover_bounds.contains(position))
+                .unwrap_or(true);
+            let current_buttons = mouse_buttons_pressed();
+            let new_outside_click = !inside_interactive_region
+                && has_new_button_press(current_buttons, previous_buttons);
+            previous_buttons = current_buttons;
+
+            let should_hide = if inside_interactive_region {
+                outside_since = None;
+                false
+            } else if new_outside_click {
+                true
+            } else {
+                let started = outside_since.get_or_insert_with(Instant::now);
+                started.elapsed() >= HOVER_OUTSIDE_GRACE
+            };
+
+            if should_hide {
+                let hide_generation = {
+                    let Ok(mut state) = hover_state.lock() else {
+                        return;
+                    };
+                    if !state.shown || state.generation != active_generation {
+                        return;
+                    }
+                    state.generation = state.generation.wrapping_add(1);
+                    state.pending_show = false;
+                    state.shown = false;
+                    state.generation
+                };
+
+                if windows::hide_hover_window(&app) {
+                    return;
+                }
+
+                let Ok(mut state) = hover_state.lock() else {
+                    return;
+                };
+                if state.generation != hide_generation || state.shown {
+                    return;
+                }
+                state.shown = true;
+                active_generation = hide_generation;
+                outside_since = Some(Instant::now() - HOVER_OUTSIDE_GRACE);
+            }
+
+            let sleep_for = outside_since
+                .map(|started| {
+                    HOVER_MONITOR_INTERVAL
+                        .min(HOVER_OUTSIDE_GRACE.saturating_sub(started.elapsed()))
+                })
+                .unwrap_or(HOVER_MONITOR_INTERVAL);
+            tokio::time::sleep(sleep_for.max(Duration::from_millis(1))).await;
+        }
+    });
 }
 
-fn point_inside_rect(x: i32, y: i32, rect_x: i32, rect_y: i32, width: i32, height: i32) -> bool {
-    x >= rect_x && x < rect_x + width && y >= rect_y && y < rect_y + height
+fn has_new_button_press(current: [bool; 3], previous: [bool; 3]) -> bool {
+    current
+        .into_iter()
+        .zip(previous)
+        .any(|(current, previous)| current && !previous)
 }
 
 #[cfg(windows)]
@@ -303,9 +398,24 @@ fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
     }
 }
 
+#[cfg(windows)]
+fn mouse_buttons_pressed() -> [bool; 3] {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON,
+    };
+
+    [VK_LBUTTON, VK_MBUTTON, VK_RBUTTON]
+        .map(|button| unsafe { GetAsyncKeyState(button as i32) } < 0)
+}
+
 #[cfg(not(windows))]
 fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
     None
+}
+
+#[cfg(not(windows))]
+fn mouse_buttons_pressed() -> [bool; 3] {
+    [false; 3]
 }
 
 pub async fn apply_orb_visibility(app: &tauri::AppHandle) {
@@ -566,9 +676,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn point_inside_rect_requires_cursor_within_bounds() {
-        assert!(point_inside_rect(110, 210, 100, 200, 24, 24));
-        assert!(!point_inside_rect(99, 210, 100, 200, 24, 24));
-        assert!(!point_inside_rect(110, 224, 100, 200, 24, 24));
+    fn physical_bounds_use_inclusive_start_and_exclusive_end() {
+        let bounds = windows::PhysicalBounds {
+            x: 100,
+            y: 200,
+            width: 24,
+            height: 24,
+        };
+        assert!(bounds.contains(tauri::PhysicalPosition::new(100, 200)));
+        assert!(bounds.contains(tauri::PhysicalPosition::new(123, 223)));
+        assert!(!bounds.contains(tauri::PhysicalPosition::new(99, 210)));
+        assert!(!bounds.contains(tauri::PhysicalPosition::new(110, 224)));
+    }
+
+    #[test]
+    fn held_mouse_button_is_not_treated_as_a_new_press() {
+        assert!(!has_new_button_press(
+            [true, false, false],
+            [true, false, false]
+        ));
+        assert!(has_new_button_press(
+            [true, false, false],
+            [false, false, false]
+        ));
     }
 }

@@ -2,8 +2,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { hideWindow } from "../services/tauri";
 import { useTokenBallStore } from "../store";
 import type { QuotaAccount, QuotaWindow } from "../types";
 
@@ -12,18 +10,10 @@ type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
 const store = useTokenBallStore();
 const visible = ref(false);
-const pointerInsidePanel = ref(false);
-const pointerInsideOrb = ref(false);
 const denseTableRef = ref<HTMLElement | null>(null);
-let leaveTimer: number | undefined;
-let lastShownAt = 0;
 let lastOrbLoadAt = 0;
 let orbLoadPromise: Promise<void> | null = null;
 let unlistenOrbEnter: UnlistenFn | undefined;
-let unlistenOrbLeave: UnlistenFn | undefined;
-let unlistenFocusChanged: UnlistenFn | undefined;
-const panelHideDelayMs = 900;
-const focusHideGraceMs = 350;
 const orbReloadCooldownMs = 1200;
 
 const balanceExpiryRanking = computed<BalanceRankingRow[]>(() => {
@@ -256,21 +246,10 @@ function syncTimeClass(value?: string | null) {
   return Date.now() - time > 60 * 60 * 1000 ? "stale" : "";
 }
 
-function showDelayed() {
-  pointerInsidePanel.value = true;
-  visible.value = true;
-  lastShownAt = Date.now();
-  if (leaveTimer) window.clearTimeout(leaveTimer);
-}
-
 async function showFromOrb() {
-  const wasVisible = visible.value;
-  pointerInsideOrb.value = true;
   visible.value = true;
-  lastShownAt = Date.now();
-  if (leaveTimer) window.clearTimeout(leaveTimer);
   await ensureConnectionsLoaded();
-  if (!wasVisible) resetListScroll();
+  resetListScroll();
 }
 
 async function ensureConnectionsLoaded() {
@@ -304,54 +283,18 @@ function resetListScroll() {
   });
 }
 
-function hideDelayed() {
-  pointerInsidePanel.value = false;
-  pointerInsideOrb.value = false;
-  if (leaveTimer) window.clearTimeout(leaveTimer);
-  leaveTimer = window.setTimeout(() => {
-    hideNow();
-  }, panelHideDelayMs);
-}
-
-function hideAfterOrbLeave() {
-  pointerInsideOrb.value = false;
-  if (leaveTimer) window.clearTimeout(leaveTimer);
-  leaveTimer = window.setTimeout(() => {
-    if (!pointerInsideOrb.value && !pointerInsidePanel.value) hideNow();
-  }, panelHideDelayMs);
-}
-
-function hideNow() {
-  if (leaveTimer) window.clearTimeout(leaveTimer);
-  leaveTimer = undefined;
-  visible.value = false;
-  pointerInsidePanel.value = false;
-  pointerInsideOrb.value = false;
-  hideWindow("hover");
-}
-
-function closeIfOutside(focused: boolean) {
-  const recentlyShown = Date.now() - lastShownAt < focusHideGraceMs;
-  if (!focused && !recentlyShown && !pointerInsidePanel.value) hideNow();
-}
-
 onMounted(async () => {
   showFromOrb();
   unlistenOrbEnter = await listen("hover://orb-enter", showFromOrb);
-  unlistenOrbLeave = await listen("hover://orb-leave", hideAfterOrbLeave);
-  unlistenFocusChanged = await getCurrentWindow().onFocusChanged((event) => closeIfOutside(event.payload));
 });
 
 onUnmounted(() => {
-  if (leaveTimer) window.clearTimeout(leaveTimer);
   unlistenOrbEnter?.();
-  unlistenOrbLeave?.();
-  unlistenFocusChanged?.();
 });
 </script>
 
 <template>
-  <main class="hover-panel-window" :class="{ visible }" @mouseenter="showDelayed" @mouseleave="hideDelayed">
+  <main class="hover-panel-window" :class="{ visible }">
     <section class="hover-panel">
     <header class="hover-panel-hero" :class="totalBalanceClass">
       <div class="hero-copy">
