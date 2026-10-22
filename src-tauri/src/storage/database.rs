@@ -145,3 +145,31 @@ async fn run_migrations(pool: &SqlitePool) -> AppResult<()> {
 pub async fn run_migrations_for_test(pool: &SqlitePool) -> AppResult<()> {
     run_migrations(pool).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::repository;
+
+    #[tokio::test]
+    async fn first_launch_initializes_empty_usable_storage() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        run_migrations_for_test(&pool).await.unwrap();
+        repository::ensure_default_settings(&pool).await.unwrap();
+        repository::ensure_default_plugins(&pool).await.unwrap();
+
+        let connections = repository::list_connections(&pool).await.unwrap();
+        let settings = repository::load_display_settings(&pool).await.unwrap();
+        let plugins = repository::list_plugins(&pool).await.unwrap();
+        let summary = repository::load_summary(&pool, false).await.unwrap();
+
+        assert!(connections.is_empty());
+        assert_eq!(
+            settings.sync_interval_seconds,
+            crate::quota::default_sync_interval_seconds()
+        );
+        assert!(!plugins.is_empty());
+        assert_eq!(summary.total_accounts, 0);
+        assert!(summary.lowest_remaining_percent.is_none());
+    }
+}

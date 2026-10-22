@@ -69,6 +69,6 @@
 
 - [x] 8.1 Run Rust formatting, linting where configured, and unit tests.
 - [x] 8.2 Run frontend type checking and build.
-- [ ] 8.3 Run the Tauri app locally and verify first launch, connection setup, manual refresh, cached display, and tray menu behavior.
+- [x] 8.3 Run the Tauri app locally and verify first launch, connection setup, manual refresh, cached display, and tray menu behavior.
 - [x] 8.4 Verify Chinese UI text and Markdown documents remain readable with no mojibake, truncation, or accidental replacement.
 - [x] 8.5 Document remaining open questions for CLIProxyAPI quota endpoint differences and default synchronization frequency.

@@ -242,7 +242,6 @@ pub fn setup_tray(
                                 tray_bounds,
                                 hover_bounds,
                             );
-                            update_tray_from_storage(&app).await;
                         });
                     }
                 }
@@ -469,8 +468,13 @@ fn update_tray_with_settings(
     settings: &DisplaySettings,
 ) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_icon(Some(tray_icon_for_summary(summary, settings)));
-        let _ = tray.set_tooltip(Some(tray_tooltip(summary, settings)));
+        debug_log::line("tray update: set_icon begin");
+        let icon_result = tray.set_icon(Some(tray_icon_for_summary(summary, settings)));
+        debug_log::line(format!("tray update: set_icon end result={icon_result:?}"));
+
+        debug_log::line("tray update: set_tooltip begin");
+        let tooltip_result = tray.set_tooltip(Some(tray_tooltip(summary, settings)));
+        debug_log::line(format!("tray update: set_tooltip end result={tooltip_result:?}"));
     }
 }
 
