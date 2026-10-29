@@ -428,14 +428,34 @@ body,
   min-width: 0;
 }
 
+.hover-period-block {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+}
+
 .hover-period-row span {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 4px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.02);
+}
+
+.period-reset-time {
+  display: block;
+  color: #8fa19b;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hover-period-block .period-reset-time {
+  font-size: 10px;
 }
 
 .hover-period-row em {
@@ -983,6 +1003,7 @@ body,
 
 .balance-ranking-panel {
   margin-bottom: 14px;
+  overflow-x: auto;
 }
 
 .balance-ranking-head {
@@ -1006,6 +1027,7 @@ body,
 
 .balance-table {
   width: 100%;
+  min-width: 1160px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12px;
@@ -1028,10 +1050,10 @@ body,
 .balance-table th:nth-child(1) { width: 112px; }
 .balance-table th:nth-child(2) { width: 22%; }
 .balance-table th:nth-child(3) { width: 104px; }
-.balance-table th:nth-child(4),
+.balance-table th:nth-child(4) { width: 54px; }
 .balance-table th:nth-child(5),
 .balance-table th:nth-child(6),
-.balance-table th:nth-child(7) { width: 54px; }
+.balance-table th:nth-child(7) { width: 110px; }
 .balance-table th:nth-child(8) { width: 132px; }
 .balance-table th:nth-child(9) { width: 16%; }
 
@@ -1057,6 +1079,10 @@ body,
   font-size: 13px;
 }
 
+.balance-period-cell .period-reset-time {
+  margin-top: 4px;
+}
+
 .balance-table tr.healthy b { color: #19c37d; }
 .balance-table tr.warning b { color: #e9b949; }
 .balance-table tr.critical b { color: #ff5a54; }
@@ -1075,6 +1101,15 @@ body,
 .balance-reset.warning { color: #e9b949; }
 .balance-reset.critical { color: #ff5a54; }
 .balance-reset.unknown { color: #8fa19b; }
+
+.balance-table .period-reset-time.balance-reset.healthy,
+.hover-period-block .period-reset-time.balance-reset.healthy { color: #19c37d; }
+.balance-table .period-reset-time.balance-reset.warning,
+.hover-period-block .period-reset-time.balance-reset.warning { color: #e9b949; }
+.balance-table .period-reset-time.balance-reset.critical,
+.hover-period-block .period-reset-time.balance-reset.critical { color: #ff5a54; }
+.balance-table .period-reset-time.balance-reset.unknown,
+.hover-period-block .period-reset-time.balance-reset.unknown { color: #8fa19b; }
 
 .balance-table tbody tr:hover {
   background: rgba(255,255,255,0.035);
@@ -1884,14 +1919,6 @@ button:disabled {
   .settings-page-shell,
   .instance-grid {
     grid-template-columns: 1fr;
-  }
-
-  .balance-ranking-panel {
-    overflow-x: auto;
-  }
-
-  .balance-table {
-    min-width: 900px;
   }
 
   .app-icon-options {

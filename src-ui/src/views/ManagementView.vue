@@ -7,11 +7,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
 import { closeMainWindow, getOrbVisible, hideWindow, minimizeMainWindow, openExternalUrl, showWindow, toggleMainWindowMaximize, onShowOverview, onShowUpdate } from "../services/tauri";
 import type { ProviderConnection, ProviderType, QuotaAccount, QuotaWindow } from "../types";
+import { accountPeriodResetClass, accountPeriodResetLabel, accountPeriodWindow, balancePeriods, resetTimeClass, windowPeriodKey, type BalancePeriod } from "../utils/quotaPeriod";
 
 type MainPage = "overview" | "orbSettings" | "instance";
 type SettingsSection = "general" | "appearance" | "plugins" | "backup" | "about";
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
-type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
 const store = useTokenBallStore();
 const instanceGuideUrl = "https://yedsn.github.io/token-ball/guide/instance-onboarding";
@@ -539,14 +539,6 @@ function findExpiryWindow(account: QuotaAccount, period: "weekly" | "monthly") {
   return account.windows.find((window) => window.resetAt && windowPeriodKey(window) === period) ?? null;
 }
 
-function windowPeriodKey(window: QuotaWindow) {
-  const value = `${window.periodType} ${window.id} ${window.name}`.toLowerCase();
-  if (value.includes("5h") || value.includes("5 h") || window.periodSeconds === 5 * 60 * 60) return "fiveHour";
-  if (value.includes("weekly") || value.includes("week") || value.includes("7d") || value.includes("每周") || value.includes("近 1 周")) return "weekly";
-  if (value.includes("monthly") || value.includes("month") || value.includes("30d") || value.includes("每月") || value.includes("近 1 月")) return "monthly";
-  return "other";
-}
-
 function highestQuotaWindow(account: QuotaAccount) {
   return account.windows
     .filter((window) => window.resetAt)
@@ -560,10 +552,6 @@ function windowPriority(window: QuotaWindow) {
   if (period === "fiveHour") return 5 * 60 * 60;
   if (typeof window.periodSeconds === "number") return window.periodSeconds;
   return typeof window.total === "number" ? window.total : 0;
-}
-
-function accountPeriodWindow(account: QuotaAccount, period: BalancePeriod) {
-  return account.windows.find((window) => windowPeriodKey(window) === period) ?? null;
 }
 
 function accountPeriodRemainingLabel(account: QuotaAccount, period: BalancePeriod) {
@@ -637,12 +625,7 @@ function balanceResetLabel(row: BalanceRankingRow) {
 }
 
 function balanceResetClass(row: BalanceRankingRow) {
-  const time = balanceResetTime(row);
-  if (time === null) return "unknown";
-  const days = (time - Date.now()) / 86400000;
-  if (days <= 3) return "critical";
-  if (days <= 7) return "warning";
-  return "healthy";
+  return resetTimeClass(row.window?.resetAt ?? row.account.nextResetAt, row.window ? windowPeriodKey(row.window) : undefined);
 }
 
 function windowPercent(window: QuotaWindow) {
@@ -1029,7 +1012,7 @@ async function openInstanceGuide() {
           <header class="balance-ranking-head">
             <div>
               <h2>全账号额度重置表</h2>
-              <p>每个账号一行，有月限额看月限额，否则按最高额度周期排序；账号到期时间显示在账号信息里</p>
+              <p>每个账号一行，5 小时、周、月分别显示剩余和重置时间；优先重置对应月额度或最长周期，账号到期时间单独显示</p>
             </div>
             <span>{{ balanceExpiryRanking.length }} 个账号</span>
           </header>
@@ -1038,13 +1021,11 @@ async function openInstanceGuide() {
           <table v-else class="balance-table">
             <thead>
               <tr>
-                <th>重置时间</th>
+                <th>优先重置</th>
                 <th>账号</th>
                 <th>优先额度</th>
                 <th>剩余</th>
-                <th>5h</th>
-                <th>周</th>
-                <th>月</th>
+                <th v-for="period in balancePeriods" :key="period.key">{{ period.label }}</th>
                 <th>用量</th>
                 <th>实例</th>
               </tr>
@@ -1055,9 +1036,10 @@ async function openInstanceGuide() {
                 <td><strong>{{ row.account.displayName }}</strong><span>{{ displayPlanName(row.account) }} · {{ row.account.status }}<template v-if="row.account.subscriptionUntil"> · 到期 <em class="expiry" :class="expiryClass(row.account.subscriptionUntil)">{{ dateLabel(row.account.subscriptionUntil) }}</em></template></span></td>
                 <td>{{ balanceWindowName(row) }}</td>
                 <td><b>{{ balanceRemainingLabel(row) }}</b></td>
-                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></td>
-                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></td>
-                <td><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></td>
+                <td v-for="period in balancePeriods" :key="period.key" class="balance-period-cell">
+                  <b class="balance-quota" :class="accountPeriodRemainingClass(row.account, period.key)">{{ accountPeriodRemainingLabel(row.account, period.key) }}</b>
+                  <time class="period-reset-time balance-reset" :class="accountPeriodResetClass(row.account, period.key)" :aria-label="period.label + '重置时间'">{{ accountPeriodResetLabel(row.account, period.key) }}</time>
+                </td>
                 <td>{{ balanceUsageLabel(row) }}</td>
                 <td>{{ accountConnectionLabel(row.account) }}</td>
               </tr>

@@ -4,9 +4,9 @@ import { RefreshCw } from "lucide-vue-next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTokenBallStore } from "../store";
 import type { QuotaAccount, QuotaWindow } from "../types";
+import { accountPeriodResetClass, accountPeriodResetLabel, accountPeriodWindow, balancePeriods, resetTimeClass, windowPeriodKey, type BalancePeriod } from "../utils/quotaPeriod";
 
 type BalanceRankingRow = { account: QuotaAccount; window: QuotaWindow | null };
-type BalancePeriod = "fiveHour" | "weekly" | "monthly";
 
 const store = useTokenBallStore();
 const visible = ref(false);
@@ -86,14 +86,6 @@ function findExpiryWindow(account: QuotaAccount, period: "weekly" | "monthly") {
   return account.windows.find((window) => window.resetAt && windowPeriodKey(window) === period) ?? null;
 }
 
-function windowPeriodKey(window: QuotaWindow) {
-  const value = `${window.periodType} ${window.id} ${window.name}`.toLowerCase();
-  if (value.includes("5h") || value.includes("5 h") || window.periodSeconds === 5 * 60 * 60) return "fiveHour";
-  if (value.includes("weekly") || value.includes("week") || value.includes("7d") || value.includes("每周") || value.includes("近 1 周")) return "weekly";
-  if (value.includes("monthly") || value.includes("month") || value.includes("30d") || value.includes("每月") || value.includes("近 1 月")) return "monthly";
-  return "other";
-}
-
 function highestQuotaWindow(account: QuotaAccount) {
   return account.windows
     .filter((window) => window.resetAt)
@@ -107,10 +99,6 @@ function windowPriority(window: QuotaWindow) {
   if (period === "fiveHour") return 5 * 60 * 60;
   if (typeof window.periodSeconds === "number") return window.periodSeconds;
   return typeof window.total === "number" ? window.total : 0;
-}
-
-function accountPeriodWindow(account: QuotaAccount, period: BalancePeriod) {
-  return account.windows.find((window) => windowPeriodKey(window) === period) ?? null;
 }
 
 function accountPeriodRemainingLabel(account: QuotaAccount, period: BalancePeriod) {
@@ -157,12 +145,7 @@ function balanceResetLabel(row: BalanceRankingRow) {
 }
 
 function balanceResetClass(row: BalanceRankingRow) {
-  const time = balanceResetTime(row);
-  if (time === null) return "unknown";
-  const days = (time - Date.now()) / 86400000;
-  if (days <= 3) return "critical";
-  if (days <= 7) return "warning";
-  return "healthy";
+  return resetTimeClass(row.window?.resetAt ?? row.account.nextResetAt, row.window ? windowPeriodKey(row.window) : undefined);
 }
 
 function accountExpiryLabel(account: QuotaAccount) {
@@ -326,9 +309,10 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="hover-period-row">
-            <span><em>5 小时</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'fiveHour')">{{ accountPeriodRemainingLabel(row.account, 'fiveHour') }}</b></span>
-            <span><em>周</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'weekly')">{{ accountPeriodRemainingLabel(row.account, 'weekly') }}</b></span>
-            <span><em>月</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, 'monthly')">{{ accountPeriodRemainingLabel(row.account, 'monthly') }}</b></span>
+            <div v-for="period in balancePeriods" :key="period.key" class="hover-period-block">
+              <span><em>{{ period.label }}</em><b class="balance-quota" :class="accountPeriodRemainingClass(row.account, period.key)">{{ accountPeriodRemainingLabel(row.account, period.key) }}</b></span>
+              <time class="period-reset-time balance-reset" :class="accountPeriodResetClass(row.account, period.key)" :aria-label="period.label + '重置时间'">{{ accountPeriodResetLabel(row.account, period.key) }}</time>
+            </div>
           </div>
           <div class="hover-meta-row">
             <span><em>窗口</em><b>{{ balanceWindowName(row) }}</b></span>
@@ -336,7 +320,7 @@ onUnmounted(() => {
             <span><em>实例</em><b>{{ accountConnectionLabel(row.account) }}</b></span>
           </div>
           <div class="hover-time-row">
-            <span><em>重置</em><b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
+            <span><em>优先重置</em><b class="balance-reset" :class="balanceResetClass(row)">{{ balanceResetLabel(row) }}</b></span>
             <span><em>到期</em><b v-if="row.account.subscriptionUntil" class="balance-reset" :class="accountExpiryClass(row.account)">{{ accountExpiryLabel(row.account) }}</b><b v-else class="balance-reset unknown">--</b></span>
             <span class="hover-sync-time"><em>更新</em><b :class="syncTimeClass(row.account.syncedAt)">{{ reset(row.account.syncedAt) }}</b></span>
           </div>
