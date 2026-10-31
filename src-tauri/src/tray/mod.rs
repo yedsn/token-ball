@@ -208,7 +208,7 @@ pub fn setup_tray(
                                     state.last_rect,
                                     state.last_position,
                                 );
-                                if cursor_position()
+                                if cursor_position(&app)
                                     .is_some_and(|cursor| !tray_bounds.contains(cursor))
                                 {
                                     state.pending_show = false;
@@ -320,7 +320,7 @@ fn monitor_visible_hover(
                 return;
             }
 
-            let cursor = cursor_position();
+            let cursor = cursor_position(&app);
             let inside_interactive_region = cursor
                 .map(|position| tray_bounds.contains(position) || hover_bounds.contains(position))
                 .unwrap_or(true);
@@ -387,7 +387,7 @@ fn has_new_button_press(current: [bool; 3], previous: [bool; 3]) -> bool {
 }
 
 #[cfg(windows)]
-fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
+fn cursor_position(_app: &tauri::AppHandle) -> Option<tauri::PhysicalPosition<i32>> {
     let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
     let ok = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) };
     if ok == 0 {
@@ -408,11 +408,18 @@ fn mouse_buttons_pressed() -> [bool; 3] {
 }
 
 #[cfg(not(windows))]
-fn cursor_position() -> Option<tauri::PhysicalPosition<i32>> {
-    None
+fn cursor_position(app: &tauri::AppHandle) -> Option<tauri::PhysicalPosition<i32>> {
+    app.cursor_position().ok().map(|position| position.cast())
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn mouse_buttons_pressed() -> [bool; 3] {
+    // AppKit exposes global button state without requiring the panel to take focus.
+    let pressed = objc2_app_kit::NSEvent::pressedMouseButtons();
+    [1, 2, 4].map(|mask| pressed & mask != 0)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn mouse_buttons_pressed() -> [bool; 3] {
     [false; 3]
 }
