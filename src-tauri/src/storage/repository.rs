@@ -446,6 +446,12 @@ pub async fn replace_connection_accounts(
 }
 
 pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
+    Ok(load_accounts_with_collection_times(pool).await?.0)
+}
+
+pub async fn load_accounts_with_collection_times(
+    pool: &SqlitePool,
+) -> AppResult<(Vec<QuotaAccount>, std::collections::HashMap<String, Option<DateTime<Utc>>>)> {
     let account_rows = sqlx::query(
         r#"
         SELECT a.id, a.connection_id, a.external_id, a.display_name, a.masked_identifier,
@@ -461,6 +467,7 @@ pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
     .await?;
 
     let mut accounts = Vec::new();
+    let mut collection_times = std::collections::HashMap::new();
     for row in account_rows {
         let account_id: String = row.try_get("id")?;
         let snapshot_id: Option<String> =
@@ -475,8 +482,9 @@ pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
         } else {
             Vec::new()
         };
-        let synced_at =
-            parse_dt(row.try_get::<Option<String>, _>("collected_at")?).unwrap_or_else(Utc::now);
+        let collected_at = parse_dt(row.try_get::<Option<String>, _>("collected_at")?);
+        let synced_at = collected_at.unwrap_or_else(Utc::now);
+        collection_times.insert(account_id.clone(), collected_at);
 
         accounts.push(QuotaAccount {
             id: account_id,
@@ -500,7 +508,7 @@ pub async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<QuotaAccount>> {
             synced_at,
         });
     }
-    Ok(accounts)
+    Ok((accounts, collection_times))
 }
 
 pub async fn load_summary(pool: &SqlitePool, stale: bool) -> AppResult<QuotaSummary> {

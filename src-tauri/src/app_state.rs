@@ -12,6 +12,7 @@ pub struct AppState {
     pub db: SqlitePool,
     pub sync_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     pub main_window_state: RwLock<Option<MainWindowState>>,
+    pub phonebox: Arc<crate::integrations::phonebox::delivery::PhoneBoxRuntime>,
 }
 
 impl AppState {
@@ -20,6 +21,7 @@ impl AppState {
             db,
             sync_locks: Mutex::new(HashMap::new()),
             main_window_state: RwLock::new(main_window_state),
+            phonebox: Arc::new(Default::default()),
         }
     }
 }

@@ -77,6 +77,7 @@ pub async fn quota_refresh_connection(
     events::emit_quota_updated(&app, &summary);
     events::emit_refresh_completed(&app, &summary);
     crate::tray::update_tray(&app, &summary).await;
+    state.phonebox.notify();
     result.map(|_| summary)
 }
 
@@ -131,6 +132,7 @@ pub async fn refresh_all_internal(
     events::emit_quota_updated(app, &summary);
     events::emit_refresh_completed(app, &summary);
     crate::tray::update_tray(app, &summary).await;
+    state.phonebox.notify();
     Ok(summary)
 }
 

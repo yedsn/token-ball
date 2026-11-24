@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Blocks, CheckCircle2, Clock3, Database, Download, Gauge, Info, Maximize2, Minus, Paintbrush, Plus, RefreshCw, Save, Settings2, SlidersHorizontal, Trash2, Upload, Wifi, X } from "lucide-vue-next";
 import { Power } from "lucide-vue-next";
+import PhoneBoxSettings from "../components/PhoneBoxSettings.vue";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTokenBallStore } from "../store";
@@ -1167,6 +1168,7 @@ async function openInstanceGuide() {
             </div>
             <p class="setting-hint">建议保留一个较小范围，例如 1 到 10 分钟。它只能减少固定节奏的特征，不能保证服务端不会识别或限制请求。</p>
           </div>
+          <PhoneBoxSettings />
         </section>
 
         <section v-if="settingsSection === 'appearance'" class="panel display-panel">

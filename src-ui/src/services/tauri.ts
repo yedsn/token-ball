@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { PhoneBoxSettings, PhoneBoxStatus } from "../types";
+
+export const getPhoneBoxSettings = (): Promise<PhoneBoxSettings> => invoke("phonebox_get_settings");
+export const savePhoneBoxSettings = (settings: PhoneBoxSettings): Promise<PhoneBoxSettings> => invoke("phonebox_save_settings", { settings });
+export const getPhoneBoxStatus = (): Promise<PhoneBoxStatus> => invoke("phonebox_get_status");
+export const pushPhoneBoxNow = (): Promise<void> => invoke("phonebox_push_now");
 import type { ConfigBackupInfo, ConnectionBackup, ConnectionInput, DisplaySettings, ExportConfigResult, ImportConfigResult, PluginInput, PluginManifest, ProviderConnection, QuotaSummary } from "../types";
 
 export function listConnections(): Promise<ProviderConnection[]> {

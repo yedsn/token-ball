@@ -73,6 +73,8 @@ TokenBall 使用 **Tauri 2 + Rust + Vue 3** 构建，目标是把分散在多个
 
 ### 管理窗口
 
+- 支持向同机 PhoneBox 推送脱敏额度，导入模板即可在手机查看多账号与各周期恢复时间；见 [PhoneBox 接入说明](docs/guide/phonebox.md)。
+
 - 总览所有 Provider 实例和账号额度
 - 新增、编辑、测试、停用和删除实例
 - 配置流量球显示项、动画、刷新按钮和程序图标

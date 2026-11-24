@@ -28,9 +28,11 @@ pub async fn connection_save(
     state: State<'_, Arc<AppState>>,
     input: ConnectionInput,
 ) -> Result<ProviderConnection, String> {
-    repository::save_connection(&state.db, input)
+    let connection = repository::save_connection(&state.db, input)
         .await
-        .map_err(Into::into)
+        .map_err(String::from)?;
+    state.phonebox.notify();
+    Ok(connection)
 }
 
 #[tauri::command]
@@ -69,6 +71,7 @@ pub async fn connection_import_config(
     if let Ok(connections) = repository::list_connections(&state.db).await {
         events::emit_connections_updated(&app, &connections);
     }
+    state.phonebox.notify();
     Ok(result)
 }
 
@@ -96,6 +99,7 @@ pub async fn connection_import_config_from_file(
     if let Ok(connections) = repository::list_connections(&state.db).await {
         events::emit_connections_updated(&app, &connections);
     }
+    state.phonebox.notify();
     Ok(result)
 }
 
@@ -112,7 +116,9 @@ fn read_config_backup_file(file_path: String) -> Result<ConfigBackup, String> {
 pub async fn connection_delete(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     repository::delete_connection(&state.db, &id)
         .await
-        .map_err(Into::into)
+        .map_err(String::from)?;
+    state.phonebox.notify();
+    Ok(())
 }
 
 #[tauri::command]
@@ -128,6 +134,7 @@ pub async fn connection_set_enabled(
     if let Ok(connections) = repository::list_connections(&state.db).await {
         events::emit_connections_updated(&app, &connections);
     }
+    state.phonebox.notify();
     Ok(connection)
 }
 

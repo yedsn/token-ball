@@ -23,6 +23,7 @@ pub async fn settings_save_display(
         .await
         .map_err::<String, _>(Into::into)?;
     events::emit_display_settings_updated(&app, &settings);
+    state.phonebox.notify();
     crate::tray::update_tray_from_storage(&app).await;
     Ok(settings)
 }

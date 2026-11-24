@@ -4,6 +4,7 @@ mod commands;
 mod debug_log;
 mod error;
 mod events;
+mod integrations;
 mod providers;
 mod quota;
 mod scheduler;
@@ -76,6 +77,9 @@ pub fn run() {
                 tray::apply_orb_visibility(&app_handle).await;
             });
             scheduler::start_quota_scheduler(app.handle().clone());
+            let state = app.state::<Arc<AppState>>();
+            let (db, phonebox) = (state.db.clone(), state.phonebox.clone());
+            tauri::async_runtime::spawn(integrations::phonebox::delivery::start(db, phonebox));
             // 启动后静默检查更新，前端通过 updater://status 事件接收结果。
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -132,6 +136,10 @@ pub fn run() {
             commands::quota_refresh_connection,
             commands::settings_get_display,
             commands::settings_save_display,
+            commands::phonebox_get_settings,
+            commands::phonebox_save_settings,
+            commands::phonebox_get_status,
+            commands::phonebox_push_now,
             commands::updater_check,
             commands::updater_download_and_install,
             commands::updater_restart,

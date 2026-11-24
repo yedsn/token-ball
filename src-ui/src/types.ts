@@ -181,3 +181,5 @@ export interface QuotaSummary {
   status: ConnectionStatus;
   accounts: QuotaAccount[];
 }
+export interface PhoneBoxSettings { enabled: boolean; baseUrl: string; }
+export interface PhoneBoxStatus { sending: boolean; lastAttemptAt: string | null; lastSuccessAt: string | null; error: string | null; }
