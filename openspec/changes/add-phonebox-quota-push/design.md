@@ -78,7 +78,8 @@ TokenBall 使用已有 HTTP 客户端依赖发送 `POST <baseUrl>/api/push/token
 | 兼容字段 | `title='TokenBall'`、`value`（平均关键窗口余量或 `--`）、`unit='%'`、`progress`（已知时 0–1）、`sub`、`level` |
 | 协议 | `schema='tokenball.phonebox.v1'`、`pushedAt`（本次发送 UTC 时间）、`heartbeatTimeoutSeconds=180` |
 | 汇总 | `summary.accountCount`、`availableAccountCount`、`knownQuotaAccountCount`、`averageRemainingPercent`、`equivalentAccounts`、`stale` |
-| 账号 | `accounts[]` 含 `id`（不透明 ID）、`alias`（通用脱敏别名）、`provider`、`instanceAlias`、`planName`（限长纯文本）、`status`、`connectionStatus`、实际 `collectedAt`、`staleAt`、`stale`、`subscriptionUntil` |
+| 账号 | `accounts[]` 含 `id`（不透明 ID）、`alias`（备用脱敏别名）、`displayName`（账号展示名称，移除控制字符、最多 160 字符）、`provider`、`instanceAlias`、`planName`（限长纯文本）、`status`、`connectionStatus`、实际 `collectedAt`、`staleAt`、`stale`、`subscriptionUntil` |
+| 排序 | `accounts[].priorityResetAt` 复用托盘的优先恢复时间：月周期优先，否则选择带恢复时间的最高优先级窗口，最终回退账号 nextResetAt；仅用于排序 |
 | 周期 | `accounts[].periods` 的 `fiveHour` / `weekly` / `monthly`，各项为 null 或含 `remainingPercent`、`total`、`used`、`remaining`、`unit`、`resetAt` |
 | 关键窗口 | `accounts[].criticalRemainingPercent` 独立取原关键窗口，不强制属于三个展示周期 |
 | 体积提示 | `includedAccountCount`、`omittedAccountCount`，截断不改变全量汇总 |
@@ -89,9 +90,9 @@ TokenBall 使用已有 HTTP 客户端依赖发送 `POST <baseUrl>/api/push/token
 - 先用每个账号原 `criticalWindowId` 取已知百分比，再计算平均值与等效量，不把最低余量混称为总体余量。未知值不进入平均分母，等效量是已知值之和除以 100；全部未知时平均值与等效量均为 null。显示“已知额度等效账号”，避免把未知解释成已耗尽；这一 null 约定仅用于新集成协议，不改桌面现有全未知时求和为 0 的行为。
 - Provider 从所属连接映射，不使用全局摘要的单一 provider/status；连接状态按账号附带。
 - 周期识别与已有工具规则一致，包含火山 5 小时 AFP；恢复时间只能来自当前周期窗口，订阅到期单独展示。为 Rust 映射建立与已有前端样例一致的回归数据，不改写现有桌面业务。
-- 新输出 ID 用源 ID 的单向摘要，账号/实例名称生成通用别名；不输出原 displayName、externalId、ChatGPT ID、连接地址、原始响应或任何凭据。映射字段与日志均采用允许列表。
+- 新输出 ID 用源 ID 的单向摘要，保留账号/实例通用别名。2026-11-24 按用户要求增加账号 displayName 展示；名称本身可能含邮箱，设置页和接入文档明确提示。除此展示字段外，不输出独立邮箱字段、原实例名称、externalId、ChatGPT ID、连接地址、原始响应或任何凭据；日志不包含展示负载。
 - 不输出 recentRequests 等非展示必需历史，所有字符串限长，数值与时间校验，非有限数/无效时间映射为 null。
-- JSON 使用 UTF-8 紧凑序列化，最多 60 KiB。按稳定 ID 顺序追加完整账号，不能再容纳时停止并报告遗漏数；汇总始终使用全部启用账号计算，禁止静默截断或发送半个账号。
+- JSON 使用 UTF-8 紧凑序列化，最多 60 KiB。后端先按订阅时间、优先恢复时间排序，缺失时间最后，名称和 ID 确保确定性；超量从末尾移除完整账号并报告遗漏数，优先保留紧急账号。页面对已包含账号按订阅时间、优先恢复时间、名称 zh-CN localeCompare 排序，与托盘一致；后端容量截断时的同时间名称并列使用 Rust 字符串排序，不引入 ICU 依赖。汇总始终使用全部启用账号计算，禁止静默截断或发送半个账号。
 
 ### 5. 采集新鲜度与传输在线状态分离
 
@@ -106,17 +107,17 @@ TTL 解决彻底退出/停止推送后的旧值残留。心跳中断、数据消
 计划文件：
 
 - `integrations/phonebox/tokenball-widget.html`：独立 HTML/CSS/JS 源模板，订阅 `push`，读取 `items.tokenball.data`。
-- `integrations/phonebox/tokenball-page.json`：嵌入源模板的可导入页面，遵循已核对的导入 envelope；普通 push 总览占 12×1，自定义 HTML 账号列表占 12×5。
+- `integrations/phonebox/tokenball-page.json`：嵌入源模板的可导入页面，遵循已核对的导入 envelope；单个自定义 HTML 占 12×6，不重复添加普通 push 总览。
 - 对应生成/一致性检查脚本：只负责源模板嵌入 JSON，不引入打包框架。
 - `docs/guide/phonebox.md`：同机前置条件、保存启用、立即推送、导入页面、验证数据、停用及排障；模板随构建作为独立资源供下载。
 
-账号区可滚动，适配竖屏与横屏；使用本地样式、无外部字体/脚本/图片，不联网、不执行快捷指令。账号和套餐等动态文字使用文本节点，不拼接为 HTML。定时器本地更新倒计时与过期标记，缺失协议、未知版本或数据被 TTL 移除时给出明确提示。
+横屏左侧为全高总览，右侧通过按钮、圆点、滑动或键盘切换账号；窄屏上下排列，必要时当前账号内容可滚动。账号装饰与文字分区，避免叠字。收到推送或排序变化时按不透明 ID 保留当前账号，不自动轮播。使用本地样式、无外部字体/脚本/图片，不联网、不执行快捷指令。账号和套餐等动态文字使用文本节点，不拼接为 HTML。定时器本地更新倒计时与过期标记，缺失协议、未知版本或数据被 TTL 移除时给出明确提示。
 
 ## Risks / Trade-offs
 
 - [PhoneBox 不同版本行为不一致] → 以当前仓库协议为兼容基线，文档记录实际联调版本/提交，导入与沙箱展示都做验证，不宣称全版本支持。
 - [账号过多超过单条容量] → 60 KiB 安全预算、全量汇总、遗漏数量提示；第一版不做多 key 分片协议。
-- [脱敏别名不如原名称好认] → 保留平台、套餐、稳定 ID 与通用实例/账号别名；第一版隐私优先，不增加原名开关。
+- [账号展示名称可能含邮箱] → 按用户要求显示账号名称，并在设置/文档明确提示；不透明 ID、备用别名与实例脱敏仍保留，不发送凭据及其他原始标识，不在日志输出负载。
 - [PhoneBox 通用组件只知道投递时间] → 通用组件副标题注明缓存/采集口径，详细模板逐账号显示真实时间；TTL 限制过期残留。
 - [新鲜度规则与随机采集间隔不同步] → 每次映射读取当前采集设置，并覆盖随机延迟启停的测试。
 - [关闭集成后不会立刻抹掉 PhoneBox 数据] → UI/文档说明最多 180 秒过期；用户也可在 PhoneBox Webhooks 手动删除 `tokenball`。

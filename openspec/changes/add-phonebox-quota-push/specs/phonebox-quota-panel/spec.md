@@ -8,7 +8,7 @@
 
 ### Requirement: Importable page without PhoneBox modifications
 
-交付物 SHALL 包含可导入页面 JSON、自定义 HTML 源模板和接入说明。页面 MUST 遵循 PhoneBox `phonebox=pages`、`version=1` 的现有导入格式，使用普通 push 组件和内置 html 组件消费 `tokenball` key，不依赖新增 Agent 路由、Android 补丁或自动改写用户设置。
+交付物 SHALL 包含可导入页面 JSON、自定义 HTML 源模板和接入说明。页面 MUST 遵循 PhoneBox `phonebox=pages`、`version=1` 的现有导入格式，使用单个 12×6 内置 html 组件消费 `tokenball` key，不重复展示额外的普通 push 总览；负载仍兼容用户自行添加的普通 push 组件。不依赖新增 Agent 路由、Android 补丁或自动改写用户设置。
 
 #### Scenario: User imports page on stock PhoneBox
 - **WHEN** 用户在已验证兼容的原版 PhoneBox 中导入并保存页面，TokenBall 已成功推送
@@ -16,7 +16,7 @@
 
 ### Requirement: Account overview and independent period cards
 
-页面 SHALL 展示账号数量、可用账号数、平均余量及已知额度等效账号数，并在账号区展示脱敏别名、平台/实例/套餐、状态、5 小时/周/月剩余百分比和各自恢复时间、订阅到期及实际采集时间。缺失数据 MUST 显示 `--`；未知余量不得绘制为耗尽。存在遗漏账号时 MUST 明示遗漏数量，不能把详情列表宣称为全部账号。
+页面 SHALL 展示账号数量、可用账号数、平均余量及已知额度等效账号数，并在账号区展示账号名称（缺失时回退为脱敏别名）、平台/实例/套餐、状态、5 小时/周/月剩余百分比和各自恢复时间、订阅到期及实际采集时间。横屏总览占满左栏高度，右侧以轮播切换账号，装饰图形与文字保持独立布局。缺失数据 MUST 显示 `--`；未知余量不得绘制为耗尽。存在遗漏账号时 MUST 明示遗漏数量，不能把详情列表宣称为全部账号。
 
 #### Scenario: Partial period data
 - **WHEN** 某账号仅有 5 小时及周额度，月额度缺失，周 resetAt 无效
@@ -24,7 +24,19 @@
 
 #### Scenario: Large account list on portrait display
 - **WHEN** 账号数量超出组件可视空间，或负载明确报告省略账号
-- **THEN** 可见账号区能够滚动，布局不遮挡总览；省略数量在页面内明确可见
+- **THEN** 用户能够切换账号，必要时滚动当前账号内容，布局不遮挡总览；省略数量在页面内明确可见
+
+### Requirement: Tray-consistent account names and ordering
+
+页面 SHALL 使用账号 displayName 作为纯文本名称，按托盘规则排序：有效订阅到期时间升序、有效 priorityResetAt 升序、账号名称使用 zh-CN localeCompare；缺失时间排最后。priorityResetAt SHALL 复用托盘的月周期优先、其余最高优先级窗口恢复时间、账号 nextResetAt 兜底规则，仅用于排序，不得替代独立周期时间。顺序变化时 MUST 按不透明账号 ID 保留当前选中账号，除非该账号已被移除。
+
+#### Scenario: Incoming payload order differs from tray order
+- **WHEN** 同一批账号以不同数组顺序推送，或订阅时间变化导致重排
+- **THEN** 页面按托盘规则显示账号名称与顺序，且仍显示用户正在查看的账号
+
+#### Scenario: Legacy payload lacks display name
+- **WHEN** 旧版发送端未提供 displayName 或 priorityResetAt
+- **THEN** 页面仍可显示备用别名并使用已知时间排序，接入文档说明需要更新 TokenBall 并重新推送才能获得完整名称与精确排序
 
 ### Requirement: Honest cache and transport indicators
 

@@ -20,11 +20,11 @@
 
 ### Requirement: Versioned safe quota payload
 
-系统 SHALL 使用 `POST /api/push/tokenball?ttl=180` 发送 `schema=tokenball.phonebox.v1` 的 JSON，兼容 PhoneBox 普通推送组件的 value/title/unit/sub/progress/level 字段，并提供账号详情。系统 MUST 采用允许列表，只输出额度展示必需字段、脱敏通用别名、不透明 ID、平台/套餐/状态、独立周期值及时间；MUST NOT 输出原账号或实例名称、平台凭据、原始账号标识、连接地址、原始响应和请求历史。
+系统 SHALL 使用 `POST /api/push/tokenball?ttl=180` 发送 `schema=tokenball.phonebox.v1` 的 JSON，兼容 PhoneBox 普通推送组件的 value/title/unit/sub/progress/level 字段，并提供账号详情。系统 MUST 采用允许列表，只输出额度展示必需字段、不透明 ID、备用通用别名、账号展示名称 displayName、平台/套餐/状态、独立周期值及时间。按用户确认的展示需求，账号名称移除控制字符并限制为 160 个字符，名称本身可能含邮箱；除此展示字段外，MUST NOT 输出原实例名称、独立邮箱字段、平台凭据、原始账号标识、连接地址、原始响应和请求历史。
 
 #### Scenario: Credentials and identifiers exist in source data
 - **WHEN** 本地连接保存 Cookie、AK/SK、Management Key，账号含邮箱、externalId 或 ChatGPT ID
-- **THEN** 出站 JSON 及投递日志均不包含这些信息，也不通过原显示名称间接泄露这些标识
+- **THEN** 除用户要求显示的账号名称可能包含邮箱外，出站 JSON 不包含凭据及原始标识；投递日志不包含展示负载、凭据或原始响应
 
 #### Scenario: Standard and custom widgets consume one key
 - **WHEN** PhoneBox 接收到 v1 负载

@@ -56,7 +56,7 @@ test('missing data, partial periods and inert text', () => {
 test('local clock ages each account and never invents a reset', () => {
   const h=harness();h.send({tokenball:{data:payload(),at:initialTime}});
   assert.doesNotMatch(h.text(),/缓存 \/ 异常/);h.advance(3000);
-  assert.match(h.text(),/缓存 \/ 异常/);assert.match(h.text(),/等待额度刷新/);assert.match(h.text(),/80%/);
+  assert.match(h.text(),/缓存 \/ 异常/);assert.doesNotMatch(h.text(),/分钟后恢复|等待额度刷新/);assert.match(h.text(),/80%/);
   h.advance(180000);assert.match(h.text(),/推送中断/);
 });
 test('new transport does not clear stale provider data', () => {
@@ -70,7 +70,7 @@ test('TTL disappearance and unsupported schema', () => {
   h.send({});assert.match(h.text(),/等待推送/);
 });
 
-test('large overview and period rings preserve known, low and unknown quota', () => {
+test('large overview and instance-style quota bars preserve known, low and unknown quota', () => {
   const h=harness(),data=payload();
   data.accounts[0].periods.weekly.remainingPercent=8;
   h.send({tokenball:{data}});
@@ -79,17 +79,19 @@ test('large overview and period rings preserve known, low and unknown quota', ()
   assert.equal(hero.style['--sweep'],'288deg');
   assert.match(hero.textContent,/80%.*总体余量/);
   const grid=h.nodes.accounts.children[0].children[1];
-  assert.equal(grid.children[0].children[1].style['--sweep'],'288deg');
+  assert.equal(grid.className,'quota-bars');
+  assert.equal(grid.children[0].children[1].children[0].style.width,'80%');
   assert.match(grid.children[1].children[1].className,/critical/);
   assert.match(grid.children[2].children[1].className,/unknown/);
-  assert.equal(grid.children[2].children[1].style['--sweep'],undefined);
+  assert.equal(grid.children[2].children[1].children[0].style.width,'0%');
+  assert.equal(grid.children[2].children[3].textContent,'--');
   data.summary.averageRemainingPercent=null;
   h.send({tokenball:{data}});
   assert.match(h.nodes.metrics.children[0].className,/unknown/);
   assert.match(h.nodes.metrics.children[0].textContent,/--/);
 });
 
-test('quota ring colors match tray thresholds including boundary rounding', () => {
+test('overview ring and quota bar colors match tray thresholds including boundary rounding', () => {
   const h=harness(),data=payload();
   for(const [value,expected] of [[0,'critical'],[29,'critical'],[30,'warning'],[59,'warning'],[60,'healthy'],[100,'healthy'],[null,'unknown'],[101,'unknown']]) {
     data.summary.averageRemainingPercent=value;
@@ -105,6 +107,24 @@ test('quota ring colors match tray thresholds including boundary rounding', () =
   assert.match(h.nodes.accounts.children[0].children[1].children[0].children[1].className,/warning/);
 });
 
+test('instance-style rows show usage, remaining percentage and independent reset times', () => {
+  const h=harness(),data=payload(),account=data.accounts[0];
+  account.criticalRemainingPercent=79.6;
+  account.periods.fiveHour={remainingPercent:80,used:20,total:100,unit:'percent',resetAt:new Date(initialTime+1000).toISOString()};
+  h.send({tokenball:{data}});
+  const card=h.nodes.accounts.children[0],row=card.children[1].children[0];
+  assert.equal(card.children[0].children[2].textContent,'80%');
+  assert.equal(row.children[2].textContent,'20% / 100%');
+  assert.equal(row.children[3].textContent,'80%');
+  const time=new Date(account.periods.fiveHour.resetAt),pad=n=>String(n).padStart(2,'0');
+  assert.equal(row.children[4].textContent,pad(time.getMonth()+1)+'/'+pad(time.getDate())+' '+pad(time.getHours())+':'+pad(time.getMinutes()));
+  assert.equal(row.children.length,5,'one reset date per row, no countdown');
+  assert.equal(card.children.length,3,'no decorative cover');
+  data.summary.averageRemainingPercent=99.9;h.send({tokenball:{data}});
+  assert.match(h.nodes.metrics.children[0].children[0].className,/long-value/);
+  assert.equal(h.nodes.metrics.children[0].children[0].textContent,'99.9%');
+});
+
 test('each reset and subscription time uses tray period-specific thresholds', () => {
   const h=harness(),data=payload(),account=data.accounts[0];
   for(const [period,critical,warning] of [['fiveHour',1,3],['weekly',24,72],['monthly',72,168]]) {
@@ -115,8 +135,7 @@ test('each reset and subscription time uses tray period-specific thresholds', ()
       account.subscriptionUntil=value;
       h.send({tokenball:{data}});
       const cell=h.nodes.accounts.children[0].children[1].children[index];
-      assert.ok(cell.children[2].className.endsWith(color),period+' '+hours);
-      assert.ok(cell.children[3].className.endsWith(color));
+      assert.ok(cell.children[4].className.endsWith(color),period+' '+hours);
       if(period==='monthly')assert.ok(h.nodes.accounts.children[0].children[2].children[1].children[1].className.endsWith(color));
     }
   }
@@ -127,17 +146,38 @@ test('timer recolors reset, collection, expiry and transport without fabricating
   account.periods.fiveHour.resetAt=new Date(initialTime+3601000).toISOString();
   account.subscriptionUntil=new Date(initialTime+72*3600000+1000).toISOString();
   h.send({tokenball:{data}});
-  assert.match(h.nodes.accounts.children[0].children[1].children[0].children[2].className,/warning/);
+  assert.match(h.nodes.accounts.children[0].children[1].children[0].children[4].className,/warning/);
   assert.match(h.nodes.accounts.children[0].children[2].children[1].children[1].className,/warning/);
   h.advance(3000);
   const row=h.nodes.accounts.children[0];
-  assert.match(row.children[1].children[0].children[2].className,/critical/);
+  assert.match(row.children[1].children[0].children[4].className,/critical/);
   assert.match(row.children[2].children[0].children[1].className,/critical/);
   assert.match(row.children[2].children[1].children[1].className,/critical/);
   assert.match(h.text(),/80%/);
   h.advance(180000);assert.match(h.nodes.connection.className,/warning/);
   h.send({});assert.match(h.nodes.connection.className,/unknown/);
   h.send({tokenball:{data:{schema:'v99'}}});assert.match(h.nodes.connection.className,/critical/);
+});
+
+test('quota update shows actual collection time and turns red when old or stale', () => {
+  const h=harness(),data=payload(),account=data.accounts[0];
+  account.collectedAt=new Date(initialTime-3600000).toISOString();
+  account.staleAt=new Date(initialTime+7200000).toISOString();
+  h.send({tokenball:{data}});
+  const update=()=>h.nodes.accounts.children[0].children[2].children[0];
+  assert.equal(update().children[0].textContent,'额度更新');
+  assert.match(update().children[1].textContent,/^\d{2}\/\d{2} \d{2}:\d{2}$/);
+  assert.equal(update().children[1].className,'healthy');
+  const actual=update().children[1].textContent;
+  h.advance(1000);assert.equal(update().children[1].className,'critical');
+  data.pushedAt=new Date(initialTime+1000).toISOString();h.send({tokenball:{data}});
+  assert.equal(update().children[1].textContent,actual,'heartbeat cannot replace collection time');
+  assert.equal(update().children[1].className,'critical');
+  account.collectedAt=new Date(initialTime).toISOString();account.stale=true;h.send({tokenball:{data}});
+  assert.equal(update().children[1].className,'critical');
+  account.collectedAt=null;h.send({tokenball:{data}});
+  assert.equal(update().children[1].className,'unknown');
+  assert.equal(update().children[1].textContent,'--');
 });
 
 test('account badges distinguish healthy, warning, errors and unknown', () => {

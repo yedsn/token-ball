@@ -81,6 +81,9 @@ try {
   const frame=widget.frameLocator('iframe');await frame.locator('#accounts').waitFor();
   const now=Date.now();
   const account={id:'opaque',alias:'账号 7ab93c12',provider:'volcengine',instanceAlias:'实例 1a4e3a66',planName:'Coding Plan',status:'available',connectionStatus:'healthy',collectedAt:new Date(now-60000).toISOString(),staleAt:new Date(now+3600000).toISOString(),stale:false,subscriptionUntil:new Date(now+10*86400000).toISOString(),periods:{fiveHour:{remainingPercent:82,resetAt:new Date(now+3500000).toISOString()},weekly:{remainingPercent:48,resetAt:new Date(now+172800000).toISOString()},monthly:null}};
+  account.criticalRemainingPercent=82;
+  Object.assign(account.periods.fiveHour,{used:18,total:100,unit:'percent'});
+  Object.assign(account.periods.weekly,{used:52,total:100,unit:'percent'});
   const data={schema:'tokenball.phonebox.v1',pushedAt:new Date(now).toISOString(),summary:{accountCount:3,availableAccountCount:2,averageRemainingPercent:65,equivalentAccounts:1.3},accounts:[{...account,displayName:'研发主账号',priorityResetAt:new Date(now+3600000).toISOString()},{...account,id:'second',displayName:'运营账号',priorityResetAt:new Date(now+7200000).toISOString(),alias:'账号 4cc2d908',provider:'qianwen',planName:'<img src=x onerror=alert(1)>',stale:true},{...account,id:'third',displayName:'备用账号',priorityResetAt:new Date(now+10800000).toISOString(),alias:'账号 1897ead1',provider:'cliProxyApi'}],omittedAccountCount:0};
   await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),data);
   await frame.getByText('82%',{exact:true}).first().waitFor();
@@ -88,8 +91,10 @@ try {
   assert.equal(await frame.locator('.account').count(),3);
   assert.equal(await frame.locator('#connection').textContent(),'推送在线');
   assert.equal(await frame.locator('.hero-ring').count(),1);
-  assert.equal(await frame.locator('.period .ring').count(),9);
-  assert.equal(await frame.locator('.period .ring.unknown').count(),3);
+  assert.equal(await frame.locator('.quota-track').count(),9);
+  assert.equal(await frame.locator('.quota-track.unknown').count(),3);
+  assert.equal(await frame.locator('.account .ring, .account-cover').count(),0);
+  assert.equal(await frame.locator('.quota-usage').first().textContent(),'18% / 100%');
   assert.ok(await frame.locator('.hero-ring .percent').evaluate(n=>parseFloat(getComputedStyle(n).fontSize)>=43));
   assert.ok((await frame.locator('.account').nth(1).textContent()).includes('<img src=x onerror=alert(1)>'));
   data.accounts[1].planName='Coding Plan';
@@ -98,11 +103,23 @@ try {
   await frame.getByText('<img src=x onerror=alert(1)>',{exact:false}).waitFor({state:'hidden'});
   await frame.getByText('18%',{exact:true}).waitFor();
   const first=frame.locator('.account').first();
-  assert.equal(await first.locator('.ring.healthy .percent').evaluate(n=>getComputedStyle(n).color),'rgb(25, 195, 125)');
+  assert.equal(await first.locator('.quota-percent.healthy').evaluate(n=>getComputedStyle(n).color),'rgb(25, 195, 125)');
   assert.equal(await first.locator('.reset.critical').first().evaluate(n=>getComputedStyle(n).color),'rgb(255, 90, 84)');
   assert.equal(await first.locator('.reset.warning').first().evaluate(n=>getComputedStyle(n).color),'rgb(233, 185, 73)');
-  assert.equal(await frame.locator('.account').nth(1).locator('.ring.critical .percent').evaluate(n=>getComputedStyle(n).color),'rgb(255, 90, 84)');
+  assert.equal(await frame.locator('.account').nth(1).locator('.quota-percent.critical').evaluate(n=>getComputedStyle(n).color),'rgb(255, 90, 84)');
   assert.equal(await first.locator('.foot time.healthy').count(),2);
+  assert.equal(await first.locator('.foot-label').first().textContent(),'额度更新');
+  assert.match(await first.locator('.foot time').first().textContent(),/^\d{2}\/\d{2} \d{2}:\d{2}$/);
+  assert.ok(await first.evaluate(n=>{
+    const left=getComputedStyle(document.querySelector('.overview')),right=getComputedStyle(n),track=getComputedStyle(n.parentElement);
+    return ['borderTopColor','borderTopWidth','borderTopStyle','borderRadius','backgroundColor'].every(key=>left[key]===right[key])&&track.borderRadius===right.borderRadius;
+  }),'account and overview use identical panel borders and backgrounds');
+  const old={...data,accounts:data.accounts.map(a=>({...a,collectedAt:new Date(now-7200000).toISOString(),staleAt:new Date(now+7200000).toISOString(),stale:false}))};
+  await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),old);
+  await first.locator('.foot time.critical').first().waitFor();
+  assert.equal(await first.getByLabel('额度更新',{exact:true}).evaluate(n=>getComputedStyle(n).color),'rgb(255, 90, 84)');
+  await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),data);
+  await first.locator('.foot time.healthy').first().waitFor();
   await widget.screenshot({path:new URL('portrait.png',artifacts).pathname.replace(/^\/([A-Za-z]:)/,'$1')});
   await widget.setViewportSize({width:900,height:430});
   await frame.locator('#counter').filter({hasText:'1 / 3'}).waitFor();
@@ -114,8 +131,9 @@ try {
   assert.equal(await frame.locator('#counter').textContent(),'2 / 3');
   await frame.getByRole('button',{name:'上一个账号',exact:true}).click();
   await widget.waitForTimeout(500);
+  assert.ok(await first.evaluate(n=>n.scrollHeight<=n.clientHeight),'standard landscape fits all quota rows and footer '+await first.evaluate(n=>[n.scrollHeight,n.clientHeight,...Array.from(n.children).map(c=>c.getBoundingClientRect().height)].join('/')));
   await widget.screenshot({path:new URL('landscape.png',artifacts).pathname.replace(/^\/([A-Za-z]:)/,'$1')});
-  for(const size of [{width:320,height:568},{width:900,height:320},{width:1280,height:720},{width:680,height:430}]) {
+  for(const size of [{width:420,height:780},{width:900,height:430},{width:320,height:568},{width:900,height:320},{width:1280,height:720},{width:680,height:430}]) {
     await widget.setViewportSize(size);
     assert.ok(await frame.locator('body').evaluate(n=>n.scrollWidth<=innerWidth),'no horizontal overflow');
     assert.ok(await frame.locator('#accounts').evaluate(n=>n.clientHeight>=100&&n.scrollWidth>n.clientWidth),'carousel remains swipeable '+size.width+'x'+size.height+' '+await frame.locator('#accounts').evaluate(n=>[n.clientHeight,n.clientWidth,n.scrollWidth].join('/')));
@@ -123,11 +141,23 @@ try {
     if(size.width>=680)assert.ok(await frame.locator('.overview').evaluate(n=>Math.abs(n.getBoundingClientRect().bottom-(innerHeight-parseFloat(getComputedStyle(document.querySelector('main')).paddingBottom)))<2),'overview fills height');
     assert.ok(await first.evaluate(n=>{
       const box=s=>n.querySelector(s).getBoundingClientRect();
-      return box('.account-cover').bottom<=box('.account-head').top&&box('.account-head').bottom<=box('.periods').top&&box('.periods').bottom<=box('.foot').top;
-    }),'cover, identity, rings and footer never overlap');
-    assert.ok(await first.locator('.period').evaluateAll(nodes=>nodes.every(n=>{
-      const r=n.querySelector('.ring').getBoundingClientRect(),t=n.querySelector('.reset').getBoundingClientRect();return r.bottom<=t.top&&r.width<=n.clientWidth;
-    })),'period text stays outside circles');
+      return box('.account-head').bottom<=box('.quota-bars').top&&box('.quota-bars').bottom<=box('.foot').top;
+    }),'identity, quota bars and footer never overlap');
+    assert.ok(await first.locator('.quota-bar-row').evaluateAll(nodes=>nodes.every(n=>{
+      const r=n.querySelector('.quota-track').getBoundingClientRect(),t=n.querySelector('.reset').getBoundingClientRect(),p=n.querySelector('.quota-percent').getBoundingClientRect();
+      const children=Array.from(n.children),center=r.top+r.height/2;
+      return children.every(c=>{const b=c.getBoundingClientRect();return Math.abs(b.top+b.height/2-center)<1;})&&r.right<=p.left&&p.right<=t.left&&n.scrollWidth<=n.clientWidth&&/^\d{2}\/\d{2} \d{2}:\d{2}$|^--$/.test(n.querySelector('.reset').textContent);
+    })),'bar rows fit without overlapping percentages or reset text');
+    for(const value of [100,99.9,0,null]) {
+      await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),{...data,summary:{...data.summary,averageRemainingPercent:value}});
+      await frame.locator('.hero-ring .percent').filter({hasText:value===null?'--':value+'%'}).waitFor();
+      assert.ok(await frame.locator('.hero-ring').evaluate(n=>{
+        const r=n.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,inside=r.width/2-parseFloat(getComputedStyle(n).getPropertyValue('--ring-width'))-5;
+        return Math.abs(r.width-r.height)<1&&Array.from(n.children).every(child=>{
+          const t=child.getBoundingClientRect();return [t.left,t.right].every(x=>[t.top,t.bottom].every(y=>Math.hypot(x-cx,y-cy)<inside));
+        });
+      }),'entire '+value+' label stays inside ring at '+size.width+'x'+size.height);
+    }
     await frame.getByRole('button',{name:'查看备用账号',exact:true}).click();
     await widget.waitForTimeout(500);
     assert.equal(await frame.locator('#counter').textContent(),'3 / 3');
@@ -137,7 +167,11 @@ try {
     assert.equal(await frame.locator('#counter').textContent(),'2 / 3');
     await frame.getByRole('button',{name:'查看研发主账号',exact:true}).click();
     await widget.waitForTimeout(500);
-    if(size.width===320)await widget.screenshot({path:new URL('narrow.png',artifacts).pathname.replace(/^\/([A-Za-z]:)/,'$1')});
+    if(size.width===320){
+      await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),data);
+      await frame.locator('.hero-ring .percent').filter({hasText:'65%'}).waitFor();
+      await widget.screenshot({path:new URL('narrow.png',artifacts).pathname.replace(/^\/([A-Za-z]:)/,'$1')});
+    }
   }
   const reordered={...data,accounts:[data.accounts[2],data.accounts[0],data.accounts[1]]};
   await widget.locator('iframe').evaluate((f,data)=>f.contentWindow.postMessage({phonebox:'data',kind:'push',value:{tokenball:{data}}},'*'),reordered);
