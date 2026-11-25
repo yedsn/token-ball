@@ -196,52 +196,38 @@ pub fn setup_tray(
                         let hover_state = Arc::clone(&hover_state);
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(HOVER_SHOW_DELAY).await;
-                            let (latest_rect, latest_position) = {
-                                let Ok(mut state) = hover_state.lock() else {
+                            let ui_app = app.clone();
+                            let ui_state = Arc::clone(&hover_state);
+                            if let Err(error) = app.run_on_main_thread(move || {
+                                let app = ui_app;
+                                let hover_state = ui_state;
+                                let Some((tray_bounds, hover_bounds)) = commit_pending_hover(
+                                    &hover_state,
+                                    generation,
+                                    |rect, position| {
+                                        let bounds =
+                                            windows::tray_bounds_for_event(&app, rect, position);
+                                        cursor_position(&app)
+                                            .is_some_and(|cursor| bounds.contains(cursor))
+                                    },
+                                    |rect, position| {
+                                        debug_log::line("tray icon: show hover after delay");
+                                        windows::show_hover_near_tray(&app, rect, position)
+                                    },
+                                ) else {
                                     return;
                                 };
-                                if state.generation != generation || !state.pending_show {
-                                    return;
-                                }
-                                let tray_bounds = windows::tray_bounds_for_event(
-                                    &app,
-                                    state.last_rect,
-                                    state.last_position,
+                                monitor_visible_hover(
+                                    app.clone(),
+                                    Arc::clone(&hover_state),
+                                    generation,
+                                    tray_bounds,
+                                    hover_bounds,
                                 );
-                                if cursor_position(&app)
-                                    .is_some_and(|cursor| !tray_bounds.contains(cursor))
-                                {
-                                    state.pending_show = false;
-                                    return;
-                                }
-                                state.pending_show = false;
-                                (state.last_rect, state.last_position)
-                            };
-                            debug_log::line("tray icon: show hover after delay");
-                            let Some((tray_bounds, hover_bounds)) =
-                                windows::show_hover_near_tray(&app, latest_rect, latest_position)
-                            else {
-                                return;
-                            };
-                            {
-                                let Ok(mut state) = hover_state.lock() else {
-                                    windows::hide_hover_window(&app);
-                                    return;
-                                };
-                                if state.generation != generation {
-                                    drop(state);
-                                    windows::hide_hover_window(&app);
-                                    return;
-                                }
-                                state.shown = true;
+                            }) {
+                                clear_pending_hover(&hover_state, generation);
+                                debug_log::line(format!("tray hover dispatch failed: {error}"));
                             }
-                            monitor_visible_hover(
-                                app.clone(),
-                                Arc::clone(&hover_state),
-                                generation,
-                                tray_bounds,
-                                hover_bounds,
-                            );
                         });
                     }
                 }
@@ -258,16 +244,67 @@ pub fn setup_tray(
 
 pub fn hide_hover_after_keyboard_close(app: &tauri::AppHandle) {
     debug_log::line("hide_hover_after_keyboard_close");
-    if let Some(hover_state) = TRAY_HOVER_STATE.get() {
-        suppress_tray_hover(hover_state, KEYBOARD_CLOSE_SUPPRESS_HOVER);
-    }
-    windows::hide_window(app, "hover");
+    hide_tray_hover(app, KEYBOARD_CLOSE_SUPPRESS_HOVER);
 }
 
-pub fn mark_hover_hidden() {
-    if let Some(hover_state) = TRAY_HOVER_STATE.get() {
-        cancel_tray_hover(hover_state);
+pub fn hide_tray_hover(app: &tauri::AppHandle, suppression: Duration) {
+    let ui_app = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || {
+        if let Some(state) = TRAY_HOVER_STATE.get() {
+            suppress_tray_hover(state, suppression);
+        }
+        windows::hide_hover_window(&ui_app);
+    }) {
+        debug_log::line(format!("tray hover hide dispatch failed: {error}"));
     }
+}
+
+fn clear_pending_hover(hover_state: &Mutex<TrayHoverState>, generation: u64) {
+    if let Ok(mut state) = hover_state.lock() {
+        if state.generation == generation {
+            state.pending_show = false;
+        }
+    }
+}
+
+// UI-thread only: never hold this lock across queries or native window calls.
+// Tauri getters can synchronously wait for the UI event loop.
+fn commit_pending_hover<T>(
+    hover_state: &Mutex<TrayHoverState>,
+    generation: u64,
+    query: impl FnOnce(Rect, tauri::PhysicalPosition<f64>) -> bool,
+    show: impl FnOnce(Rect, tauri::PhysicalPosition<f64>) -> Option<T>,
+) -> Option<T> {
+    let (rect, position) = {
+        let state = hover_state.lock().ok()?;
+        if state.generation != generation || !state.pending_show {
+            return None;
+        }
+        (state.last_rect, state.last_position)
+    };
+    if !query(rect, position) {
+        clear_pending_hover(hover_state, generation);
+        return None;
+    }
+    {
+        let mut state = hover_state.lock().ok()?;
+        if state.generation != generation || !state.pending_show {
+            return None;
+        }
+        if Instant::now() < state.suppress_until {
+            state.pending_show = false;
+            return None;
+        }
+    }
+    let result = show(rect, position);
+    let mut state = hover_state.lock().ok()?;
+    // Reentrant actions own the surface now; never hide a newer window.
+    if state.generation != generation {
+        return None;
+    }
+    state.pending_show = false;
+    state.shown = result.is_some();
+    result
 }
 
 fn cancel_pending_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>) {
@@ -296,7 +333,7 @@ fn suppress_tray_hover(hover_state: &Arc<Mutex<TrayHoverState>>, duration: Durat
     state.generation = state.generation.wrapping_add(1);
     state.pending_show = false;
     state.shown = false;
-    state.suppress_until = Instant::now() + duration;
+    state.suppress_until = state.suppress_until.max(Instant::now() + duration);
 }
 
 fn monitor_visible_hover(
@@ -307,14 +344,13 @@ fn monitor_visible_hover(
     hover_bounds: windows::PhysicalBounds,
 ) {
     tauri::async_runtime::spawn(async move {
-        let mut active_generation = generation;
         let mut outside_since = None;
         let mut previous_buttons = mouse_buttons_pressed();
 
         loop {
             let active = hover_state
                 .lock()
-                .map(|state| state.shown && state.generation == active_generation)
+                .map(|state| state.shown && state.generation == generation)
                 .unwrap_or(false);
             if !active {
                 return;
@@ -340,32 +376,22 @@ fn monitor_visible_hover(
             };
 
             if should_hide {
-                let hide_generation = {
-                    let Ok(mut state) = hover_state.lock() else {
-                        return;
-                    };
-                    if !state.shown || state.generation != active_generation {
-                        return;
-                    }
-                    state.generation = state.generation.wrapping_add(1);
-                    state.pending_show = false;
-                    state.shown = false;
-                    state.generation
-                };
-
-                if windows::hide_hover_window(&app) {
+                let (sender, receiver) = tokio::sync::oneshot::channel();
+                let ui_app = app.clone();
+                let ui_state = Arc::clone(&hover_state);
+                if let Err(error) = app.run_on_main_thread(move || {
+                    let hidden = hide_current_hover(&ui_state, generation, || {
+                        windows::hide_hover_window(&ui_app)
+                    });
+                    let _ = sender.send(hidden);
+                }) {
+                    debug_log::line(format!("tray hover monitor dispatch failed: {error}"));
                     return;
                 }
-
-                let Ok(mut state) = hover_state.lock() else {
-                    return;
-                };
-                if state.generation != hide_generation || state.shown {
+                if receiver.await.unwrap_or(true) {
                     return;
                 }
-                state.shown = true;
-                active_generation = hide_generation;
-                outside_since = Some(Instant::now() - HOVER_OUTSIDE_GRACE);
+                tokio::time::sleep(HOVER_MONITOR_INTERVAL).await;
             }
 
             let sleep_for = outside_since
@@ -377,6 +403,32 @@ fn monitor_visible_hover(
             tokio::time::sleep(sleep_for.max(Duration::from_millis(1))).await;
         }
     });
+}
+
+// UI-thread only: check ownership immediately before hiding, without the lock.
+fn hide_current_hover(
+    hover_state: &Mutex<TrayHoverState>,
+    generation: u64,
+    hide: impl FnOnce() -> bool,
+) -> bool {
+    let active = hover_state
+        .lock()
+        .map(|state| state.generation == generation && state.shown)
+        .unwrap_or(false);
+    if !active {
+        return true;
+    }
+    if !hide() {
+        return false;
+    }
+    if let Ok(mut state) = hover_state.lock() {
+        if state.generation == generation {
+            state.generation = state.generation.wrapping_add(1);
+            state.shown = false;
+            state.pending_show = false;
+        }
+    }
+    true
 }
 
 fn has_new_button_press(current: [bool; 3], previous: [bool; 3]) -> bool {
@@ -481,7 +533,9 @@ fn update_tray_with_settings(
 
         debug_log::line("tray update: set_tooltip begin");
         let tooltip_result = tray.set_tooltip(Some(tray_tooltip(summary, settings)));
-        debug_log::line(format!("tray update: set_tooltip end result={tooltip_result:?}"));
+        debug_log::line(format!(
+            "tray update: set_tooltip end result={tooltip_result:?}"
+        ));
     }
 }
 
@@ -685,6 +739,186 @@ fn blend(base: (u8, u8, u8), top: (u8, u8, u8), amount: f64) -> (u8, u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pending_state() -> Arc<Mutex<TrayHoverState>> {
+        Arc::new(Mutex::new(TrayHoverState {
+            generation: 1,
+            pending_show: true,
+            shown: false,
+            last_move: Instant::now(),
+            last_rect: Rect::default(),
+            last_position: tauri::PhysicalPosition::new(0.0, 0.0),
+            suppress_until: Instant::now(),
+        }))
+    }
+
+    #[test]
+    fn blocked_query_does_not_block_cancellation() {
+        use std::sync::mpsc;
+        let state = pending_state();
+        let worker_state = Arc::clone(&state);
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = commit_pending_hover(
+                &worker_state,
+                1,
+                |_, _| {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+                    true
+                },
+                |_, _| -> Option<()> { panic!("cancelled request displayed") },
+            );
+            done_tx.send(result).unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let acquired = state.try_lock().is_ok();
+        if acquired {
+            cancel_pending_tray_hover(&state);
+        }
+        release_tx.send(()).unwrap();
+        assert!(acquired, "query retained the hover lock");
+        assert!(done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .is_none());
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn all_cancel_actions_invalidate_prepared_hover() {
+        for action in 0..4 {
+            let state = pending_state();
+            let result = commit_pending_hover(
+                &state,
+                1,
+                |_, _| {
+                    match action {
+                        0 => cancel_pending_tray_hover(&state),
+                        1 => cancel_tray_hover(&state),
+                        2 => suppress_tray_hover(&state, TRAY_MENU_SUPPRESS_HOVER),
+                        _ => suppress_tray_hover(&state, KEYBOARD_CLOSE_SUPPRESS_HOVER),
+                    }
+                    true
+                },
+                |_, _| -> Option<()> { panic!("cancelled request displayed") },
+            );
+            assert!(result.is_none());
+        }
+    }
+
+    #[test]
+    fn generic_hide_preserves_menu_suppression() {
+        let state = pending_state();
+        suppress_tray_hover(&state, TRAY_MENU_SUPPRESS_HOVER);
+        let deadline = state.lock().unwrap().suppress_until;
+        suppress_tray_hover(&state, Duration::ZERO);
+        assert_eq!(state.lock().unwrap().suppress_until, deadline);
+        state.lock().unwrap().pending_show = true;
+        let generation = state.lock().unwrap().generation;
+        assert!(commit_pending_hover(
+            &state,
+            generation,
+            |_, _| true,
+            |_, _| -> Option<()> { panic!("displayed during suppression") }
+        )
+        .is_none());
+        state.lock().unwrap().suppress_until = Instant::now();
+        state.lock().unwrap().pending_show = true;
+        assert_eq!(
+            commit_pending_hover(&state, generation, |_, _| true, |_, _| Some(())),
+            Some(())
+        );
+    }
+
+    #[test]
+    fn failures_allow_subsequent_hover() {
+        for failure in 0..3 {
+            let state = pending_state();
+            if failure == 0 {
+                clear_pending_hover(&state, 1); // dispatch failed
+            } else {
+                let result =
+                    commit_pending_hover(&state, 1, |_, _| failure != 1, |_, _| None::<()>);
+                assert!(result.is_none());
+            }
+            {
+                let mut current = state.lock().unwrap();
+                assert!(!current.pending_show && !current.shown);
+                current.generation += 1;
+                current.pending_show = true;
+            }
+            assert_eq!(
+                commit_pending_hover(
+                    &state,
+                    2,
+                    |_, _| true,
+                    |_, _| {
+                        assert!(state.try_lock().is_ok(), "show retained the lock");
+                        Some(())
+                    }
+                ),
+                Some(())
+            );
+        }
+    }
+
+    #[test]
+    fn old_request_and_monitor_cannot_change_new_panel() {
+        let state = pending_state();
+        let result = commit_pending_hover(
+            &state,
+            1,
+            |_, _| {
+                cancel_tray_hover(&state);
+                state.lock().unwrap().shown = true;
+                true
+            },
+            |_, _| -> Option<()> { panic!("old request displayed") },
+        );
+        assert!(result.is_none());
+        clear_pending_hover(&state, 1);
+        assert!(hide_current_hover(&state, 1, || panic!(
+            "old monitor hid new panel"
+        )));
+        assert!(state.lock().unwrap().shown);
+    }
+
+    #[test]
+    fn reentrant_show_preserves_new_owner() {
+        let state = pending_state();
+        assert!(commit_pending_hover(
+            &state,
+            1,
+            |_, _| true,
+            |_, _| {
+                cancel_tray_hover(&state);
+                state.lock().unwrap().pending_show = true;
+                Some(())
+            }
+        )
+        .is_none());
+        assert!(state.lock().unwrap().pending_show);
+    }
+
+    #[test]
+    fn hide_failure_retries_without_holding_lock() {
+        let state = pending_state();
+        {
+            let mut current = state.lock().unwrap();
+            current.pending_show = false;
+            current.shown = true;
+        }
+        assert!(!hide_current_hover(&state, 1, || {
+            assert!(state.try_lock().is_ok());
+            false
+        }));
+        assert!(state.lock().unwrap().shown);
+        assert!(hide_current_hover(&state, 1, || true));
+        assert!(!state.lock().unwrap().shown);
+    }
 
     #[test]
     fn physical_bounds_use_inclusive_start_and_exclusive_end() {

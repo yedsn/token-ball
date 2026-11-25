@@ -389,7 +389,8 @@ pub fn hide_hover_window(app: &AppHandle) -> bool {
 
 pub fn hide_window(app: &AppHandle, label: &str) {
     if label == "hover" {
-        tray::mark_hover_hidden();
+        tray::hide_tray_hover(app, std::time::Duration::ZERO);
+        return;
     }
     debug_log::line(format!("hide_window: {label}: begin"));
     if let Some(window) = app.get_webview_window(label) {
